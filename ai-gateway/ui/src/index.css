@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-surface-700; }
+  body { @apply bg-surface-950 text-surface-200; }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-900 border border-surface-800 rounded-xl p-5;
+  }
+  .card-header {
+    @apply text-sm font-semibold text-surface-400 uppercase tracking-wider mb-4;
+  }
+  .stat-value {
+    @apply text-2xl font-bold text-white;
+  }
+  .stat-label {
+    @apply text-xs text-surface-500 mt-1;
+  }
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-500 active:bg-brand-700;
+  }
+  .btn-ghost {
+    @apply btn text-surface-400 hover:text-white hover:bg-surface-800;
+  }
+  .input {
+    @apply bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 text-sm text-white
+           placeholder:text-surface-500 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500
+           transition-all duration-150;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-success { @apply badge bg-accent-900/50 text-accent-400 border border-accent-700/50; }
+  .badge-danger { @apply badge bg-red-900/50 text-red-400 border border-red-700/50; }
+  .badge-warning { @apply badge bg-yellow-900/50 text-yellow-400 border border-yellow-700/50; }
+  .badge-neutral { @apply badge bg-surface-800 text-surface-400 border border-surface-700; }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-surface-700 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-surface-600; }
+
+/* Recharts overrides */
+.recharts-text { @apply fill-surface-400 text-xs; }
+.recharts-cartesian-grid-horizontal line, .recharts-cartesian-grid-vertical line {
+  @apply stroke-surface-800;
+}
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  @apply bg-surface-900 border border-surface-700 rounded-lg !important;
+}
+
+/* Toast animation */
+@keyframes slide-in {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
