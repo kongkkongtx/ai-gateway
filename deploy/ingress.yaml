@@ -1,0 +1,22 @@
+# Optional: expose the gateway via an Ingress.
+# Requires an ingress controller (nginx, traefik, etc.) installed in the cluster.
+# Uncomment and customize the host field before applying.
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: ai-gateway
+#   annotations:
+#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#     - host: ai-gateway.example.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: ai-gateway
+#                 port:
+#                   name: http
