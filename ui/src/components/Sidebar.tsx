@@ -6,6 +6,8 @@ import {
   Terminal,
   Key,
   Sliders,
+  ScrollText,
+  FileText,
 } from 'lucide-react'
 
 const navItems = [
@@ -14,6 +16,8 @@ const navItems = [
   { to: '/routes', icon: Route, label: 'Routes' },
   { to: '/keys', icon: Key, label: 'API Keys' },
   { to: '/playground', icon: Terminal, label: 'Playground' },
+  { to: '/audit-logs', icon: ScrollText, label: 'Audit Logs' },
+  { to: '/prompts', icon: FileText, label: 'Prompts' },
   { to: '/settings', icon: Sliders, label: 'Settings' },
 ]
 

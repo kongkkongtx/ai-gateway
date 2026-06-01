@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -22,18 +24,15 @@ func NewCost(tracker *cost.Tracker, logger *slog.Logger) *CostMiddleware {
 
 func (m *CostMiddleware) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Only apply to AI endpoints
 		if !strings.HasPrefix(r.URL.Path, "/v1/") {
 			next.ServeHTTP(w, r)
 			return
 		}
-
 		if m.tracker == nil {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Check quota for authenticated key
 		keyName, _ := r.Context().Value(APIKeyNameContextKey).(string)
 		if keyName != "" {
 			allowed, inputUsed, outputUsed, _ := m.tracker.Check(keyName)
@@ -47,26 +46,54 @@ func (m *CostMiddleware) Middleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Wrap response writer to track usage
-		wrapped := &costResponseWriter{ResponseWriter: w, tracker: m.tracker, keyName: keyName}
+		wrapped := &costResponseWriter{
+			ResponseWriter: w,
+			tracker:        m.tracker,
+			keyName:        keyName,
+			path:           r.URL.Path,
+			body:           &bytes.Buffer{},
+		}
 		next.ServeHTTP(wrapped, r)
+		wrapped.flushUsage()
 	})
 }
 
-// costResponseWriter wraps http.ResponseWriter to capture usage from responses.
+// costResponseWriter wraps http.ResponseWriter to capture usage from responses,
+// buffering the body so it can be parsed for token usage metadata.
 type costResponseWriter struct {
 	http.ResponseWriter
-	tracker  *cost.Tracker
-	keyName  string
+	tracker *cost.Tracker
+	keyName string
+	path    string
+	body    *bytes.Buffer
 }
 
 func (w *costResponseWriter) Write(b []byte) (int, error) {
-	// When the tracker is nil or key is empty, just pass through
-	if w.tracker == nil || w.keyName == "" {
-		return w.ResponseWriter.Write(b)
-	}
-	// Estimate: for non-streaming responses, we could parse the body
-	// For simplicity, we record based on response length
-	// A production version would parse the JSON response body
+	w.body.Write(b)
 	return w.ResponseWriter.Write(b)
+}
+
+// flushUsage parses the buffered response body and records token usage.
+func (w *costResponseWriter) flushUsage() {
+	if w.tracker == nil || w.keyName == "" || w.body.Len() == 0 {
+		return
+	}
+	if !strings.HasSuffix(w.path, "/chat/completions") {
+		return
+	}
+
+	var resp struct {
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(w.body.Bytes(), &resp); err != nil {
+		return
+	}
+	if resp.Usage == nil || (resp.Usage.PromptTokens == 0 && resp.Usage.CompletionTokens == 0) {
+		return
+	}
+	w.tracker.Record(w.keyName, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
 }

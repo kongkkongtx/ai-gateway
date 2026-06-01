@@ -12,6 +12,9 @@ import (
 	"github.com/yushi/ai-gateway/internal/security"
 	"github.com/yushi/ai-gateway/internal/cost"
 	"github.com/yushi/ai-gateway/internal/semantic"
+	"github.com/yushi/ai-gateway/internal/prompt"
+	"github.com/yushi/ai-gateway/internal/webhook"
+	"github.com/yushi/ai-gateway/internal/plugin"
 )
 
 type Config struct {
@@ -25,6 +28,9 @@ type Config struct {
 	SemanticCache semantic.SemanticCacheConfig  `yaml:"semantic_cache"`
 	Cost        cost.Config              `yaml:"cost"`
 	Security  security.Config    `yaml:"security"`
+	Prompt    prompt.Config     `yaml:"prompt_templates"`
+	Webhook   webhook.Config    `yaml:"webhook"`
+	Plugin    plugin.Config     `yaml:"plugins"`
 	Log       LogConfig          `yaml:"log"`
 }
 

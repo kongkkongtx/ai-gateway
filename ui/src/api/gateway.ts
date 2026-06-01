@@ -1,4 +1,4 @@
-﻿import type { GatewayStatus, HealthResponse, ChatRequest, ChatResponse, UpstreamStatus } from '../types'
+import type { GatewayStatus, HealthResponse, ChatRequest, ChatResponse, UpstreamStatus } from '../types'
 
 const BASE = ''
 
@@ -173,6 +173,138 @@ export interface GatewayConfig {
   log: { level: string; format: string }
   redis: { addr: string; password: string; db: number }
   auth: { enabled: boolean }
+  security?: {
+    enabled?: boolean
+    prompt_injection: { enabled: boolean; action: string; risk_threshold: string }
+    pii: { enabled: boolean; action: string; types?: string[] }
+  }
+  semantic?: {
+    enabled: boolean
+    provider: string
+    threshold: number
+  }
+  semantic_cache?: {
+    enabled: boolean
+    threshold: number
+    ttl: string
+    max_entries: number
+  }
+  cost?: {
+    enabled: boolean
+    budget?: number
+    alert_threshold?: number
+    model_priority?: string[]
+    auto_degrade?: boolean
+    default_limit?: { input_tokens: number; output_tokens: number; window: string }
+    degrade?: { action: string; cheaper_provider?: string; alert_webhook?: string; alert_threshold?: number }
+  }
+
+
+}
+
+export interface AuditLogEntry {
+  timestamp: string
+  method: string
+  path: string
+  status: number
+  duration: string
+  remote_addr: string
+  api_key_name?: string
+  level: string
+  model?: string
+  tokens_in?: number
+  tokens_out?: number
+}
+
+export async function getAuditLogs(params: { limit?: number; level?: string; key_name?: string; path?: string; status?: number }): Promise<AuditLogEntry[]> {
+  const qs = new URLSearchParams()
+  if (params.limit) qs.set('limit', String(params.limit))
+  if (params.level) qs.set('level', params.level)
+  if (params.key_name) qs.set('key_name', params.key_name)
+  if (params.path) qs.set('path', params.path)
+  if (params.status) qs.set('status', String(params.status))
+  return fetchJson('/admin/audit-logs?' + qs.toString())
+}
+
+export interface CostStat {
+  key_name: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  record_count: number
+}
+
+export async function getCostStats(): Promise<CostStat[]> {
+  return fetchJson('/admin/cost-stats')
+}
+
+
+export interface PromptTemplate {
+  id: string
+  name: string
+  description?: string
+  role?: string
+  route_match?: string
+  variables?: { name: string; default?: string; desc?: string }[]
+  current_version: number
+  versions?: {
+    version: number
+    content: string
+    variables?: { name: string; default?: string; desc?: string }[]
+    created_at: string
+    created_by?: string
+    comment?: string
+  }[]
+  created_at: string
+  updated_at: string
+}
+
+
+export interface WebhookEndpoint {
+  name: string
+  url: string
+  enabled: boolean
+  events?: string[]
+  retry?: number
+}
+
+export interface WebhookConfig {
+  endpoints: WebhookEndpoint[]
+}
+
+export async function getWebhookConfig(): Promise<WebhookConfig> {
+  return fetchJson('/admin/webhook')
+}
+
+export async function updateWebhookConfig(cfg: WebhookConfig): Promise<{ status: string }> {
+  return fetchJson('/admin/webhook', {
+    method: 'PUT',
+    body: JSON.stringify(cfg),
+  })
+}
+
+export async function getPrompts(): Promise<PromptTemplate[]> {
+  return fetchJson('/admin/prompts')
+}
+
+export async function savePrompt(tmpl: Partial<PromptTemplate>): Promise<{ status: string; id: string }> {
+  return fetchJson('/admin/prompts', {
+    method: 'POST',
+    body: JSON.stringify(tmpl),
+  })
+}
+
+export async function deletePrompt(id: string): Promise<{ status: string }> {
+  return fetchJson('/admin/prompts/' + encodeURIComponent(id), {
+    method: 'DELETE',
+  })
+}
+
+export async function addPromptVersion(id: string, content: string, comment?: string): Promise<{ status: string; version: string }> {
+  return fetchJson('/admin/prompts/' + encodeURIComponent(id) + '/versions', {
+    method: 'POST',
+    body: JSON.stringify({ content, comment }),
+  })
 }
 
 export async function getGatewayConfig(): Promise<GatewayConfig> {
@@ -185,3 +317,5 @@ export async function updateGatewayConfig(config: Partial<GatewayConfig>): Promi
     body: JSON.stringify(config),
   })
 }
+
+

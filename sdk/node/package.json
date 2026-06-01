@@ -1,0 +1,8 @@
+﻿{
+  "name": "ai-gateway-client",
+  "version": "0.1.0",
+  "description": "Node.js SDK for AI Gateway",
+  "main": "index.js",
+  "license": "Apache-2.0",
+  "engines": { "node": ">=18" }
+}

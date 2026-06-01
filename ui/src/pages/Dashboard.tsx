@@ -14,7 +14,8 @@ import {
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts"
-import { getHealth, getStatus } from '../api/gateway'
+import { getHealth, getStatus, getCostStats } from '../api/gateway'
+import type { CostStat } from '../api/gateway'
 import StatCard from '../components/StatCard'
 import StatusBadge from '../components/StatusBadge'
 import type { GatewayStatus } from '../types'
@@ -33,6 +34,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [costStats, setCostStats] = useState<CostStat[]>([])
   const [chartData, setChartData] = useState<DataPoint[]>([])
   const lastHealthyCount = useRef(0)
   const lastTotalCount = useRef(0)
@@ -44,6 +46,12 @@ export default function Dashboard() {
       const [h, s] = await Promise.all([getHealth(), getStatus()])
       setHealth(h.status)
       setStatus(s)
+
+      // Fetch cost stats
+      try {
+        const cs = await getCostStats()
+        setCostStats(cs)
+      } catch { /* cost stats unavailable */ }
 
       // Track metrics for chart
       const now = new Date().toLocaleTimeString()
@@ -290,6 +298,44 @@ export default function Dashboard() {
                 </div>
               </div>
             ))
+          )}
+        </div>
+      </div>
+
+      {/* Token Usage Stats */}
+      <div className="card">
+        <h2 className="card-header flex items-center justify-between">
+          <span>Token Usage (24h)</span>
+          <span className="text-surface-500 font-normal normal-case text-xs">{costStats.length} keys</span>
+        </h2>
+        <div className="space-y-2">
+          {loading ? (
+            <div className="h-12 bg-surface-800 rounded-lg animate-pulse" />
+          ) : costStats.length === 0 ? (
+            <p className="text-sm text-surface-500 py-4 text-center">No usage data yet</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-surface-500 border-b border-surface-800">
+                    <th className="text-left py-2 pr-4 font-medium">API Key</th>
+                    <th className="text-right py-2 pr-4 font-medium">Input Tokens</th>
+                    <th className="text-right py-2 pr-4 font-medium">Output Tokens</th>
+                    <th className="text-right py-2 font-medium">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {costStats.map((stat, i) => (
+                    <tr key={i} className="border-b border-surface-800/50 hover:bg-surface-800/30 transition-colors">
+                      <td className="py-2 pr-4 text-sm text-white font-mono">{stat.key_name}</td>
+                      <td className="py-2 pr-4 text-right text-xs text-surface-300">{stat.input_tokens.toLocaleString()}</td>
+                      <td className="py-2 pr-4 text-right text-xs text-surface-300">{stat.output_tokens.toLocaleString()}</td>
+                      <td className="py-2 text-right text-xs font-medium text-brand-400">{stat.total_tokens.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>

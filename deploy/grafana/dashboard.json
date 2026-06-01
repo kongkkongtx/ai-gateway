@@ -1,0 +1,73 @@
+{
+  "title": "AI Gateway - Overview",
+  "uid": "ai-gateway-overview",
+  "tags": [
+    "ai-gateway"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "Requests per Minute",
+      "type": "graph",
+      "datasource": "prometheus",
+      "targets": [
+        {
+          "expr": "rate(ai_gateway_requests_total[1m])",
+          "legendFormat": "{{model}} {{provider}}"
+        }
+      ]
+    },
+    {
+      "title": "Token Usage",
+      "type": "graph",
+      "datasource": "prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(ai_gateway_tokens_total[5m])) by (type)",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "title": "Upstream Health",
+      "type": "stat",
+      "datasource": "prometheus",
+      "targets": [
+        {
+          "expr": "ai_gateway_upstream_healthy",
+          "legendFormat": "{{name}}"
+        }
+      ]
+    },
+    {
+      "title": "Latency (p50/p95/p99)",
+      "type": "graph",
+      "datasource": "prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, rate(ai_gateway_request_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, ...)",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, ...)",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Error Rate",
+      "type": "graph",
+      "datasource": "prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(ai_gateway_requests_total{status=~\"5..\"}[5m])) / sum(rate(ai_gateway_requests_total[5m]))",
+          "legendFormat": "error rate"
+        }
+      ]
+    }
+  ]
+}

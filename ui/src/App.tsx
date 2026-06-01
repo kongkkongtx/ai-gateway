@@ -7,6 +7,8 @@ import UpstreamsPage from './pages/Upstreams'
 import RoutesPage from './pages/Routes'
 import KeysPage from './pages/Keys'
 import SettingsPage from './pages/Settings'
+import AuditLogsPage from './pages/AuditLogs'
+import PromptsPage from './pages/Prompts'
 import Playground from './pages/Playground'
 
 export default function App() {
@@ -20,6 +22,8 @@ export default function App() {
             <Route path="/routes" element={<ErrorBoundary><RoutesPage /></ErrorBoundary>} />
             <Route path="/keys" element={<ErrorBoundary><KeysPage /></ErrorBoundary>} />
             <Route path="/settings" element={<ErrorBoundary><SettingsPage /></ErrorBoundary>} />
+            <Route path="/audit-logs" element={<ErrorBoundary><AuditLogsPage /></ErrorBoundary>} />
+            <Route path="/prompts" element={<ErrorBoundary><PromptsPage /></ErrorBoundary>} />
             <Route path="/playground" element={<ErrorBoundary><Playground /></ErrorBoundary>} />
           </Routes>
         </Layout>

@@ -1,14 +1,19 @@
-﻿package middleware
+package middleware
 
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 	"log/slog"
 	"net/http"
 
 	"github.com/yushi/ai-gateway/internal/security"
 )
+
+// SecurityEventCallback is called when a security event occurs.
+type SecurityEventCallback func(eventType, severity, title, message string, details map[string]interface{})
 
 // SecurityMiddleware provides prompt injection detection and PII redaction
 // for incoming AI requests. It intercepts the request body, performs security
@@ -19,6 +24,7 @@ type SecurityMiddleware struct {
 	cfg            security.PromptInjectionConfig
 	piiCfg         security.PIIConfig
 	logger         *slog.Logger
+	onEvent        SecurityEventCallback
 }
 
 // NewSecurity creates a SecurityMiddleware.
@@ -30,6 +36,7 @@ func NewSecurity(
 	injCfg security.PromptInjectionConfig,
 	piiCfg security.PIIConfig,
 	logger *slog.Logger,
+	onEvent SecurityEventCallback,
 ) *SecurityMiddleware {
 	return &SecurityMiddleware{
 		promptDetector: detector,
@@ -37,6 +44,7 @@ func NewSecurity(
 		cfg:            injCfg,
 		piiCfg:         piiCfg,
 		logger:         logger,
+		onEvent:        onEvent,
 	}
 }
 
@@ -88,9 +96,11 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 	Content string `json:"content"`
 }, stream bool) []byte {
 
+	var sanitized bool
 	// 1. Prompt injection detection
 	if s.promptDetector != nil && s.cfg.Enabled {
 		var messageTexts []string
+
 		for _, msg := range messages {
 			messageTexts = append(messageTexts, msg.Content)
 		}
@@ -108,6 +118,22 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 					"pattern", result.Pattern,
 					"action", s.cfg.Action)
 
+				// Fire webhook event
+				if s.onEvent != nil {
+					severity := "warning"
+					if result.Risk == "high" || result.Risk == "critical" {
+						severity = "critical"
+					}
+					s.onEvent("security.block", severity,
+						fmt.Sprintf("Prompt injection detected: %s", result.Pattern),
+						fmt.Sprintf("Risk level %s, action: %s", result.Risk, s.cfg.Action),
+						map[string]interface{}{
+							"risk": result.Risk,
+							"pattern": result.Pattern,
+							"action": s.cfg.Action,
+						})
+				}
+
 				switch s.cfg.Action {
 				case "block":
 					// We can't write here directly; return nil to signal caller to write error
@@ -115,7 +141,14 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 				case "log":
 					// Just log and continue
 				case "sanitize":
-					// TODO: implement content sanitization
+					for i, msg := range messages {
+						cleaned, changed := sanitizeContent(msg.Content, result.Pattern)
+						if changed {
+							s.logger.Info("prompt sanitized", "message_idx", i, "pattern", result.Pattern)
+							messages[i].Content = cleaned
+						}
+					}
+					sanitized = true
 				}
 			}
 		}
@@ -123,6 +156,16 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 
 	// 2. PII redaction on messages
 	if s.piiRedactor != nil && s.piiCfg.Enabled {
+		// Fire webhook event for PII detection
+		if s.onEvent != nil && len(s.piiCfg.Types) > 0 {
+			s.onEvent("security.sanitize", "info",
+				"PII detected and masked",
+				fmt.Sprintf("PII types: %v", s.piiCfg.Types),
+				map[string]interface{}{
+					"types": s.piiCfg.Types,
+					"action": s.piiCfg.Action,
+				})
+		}
 		redacted := false
 		for i, msg := range messages {
 			newContent, matches, err := s.piiRedactor.Redact(msg.Content)
@@ -163,5 +206,36 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 		}
 	}
 
+	if sanitized {
+		var reqMap map[string]interface{}
+		if err := json.Unmarshal(originalBody, &reqMap); err == nil {
+			type msgStruct struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			}
+			var newMsgs []msgStruct
+			for _, m := range messages {
+				newMsgs = append(newMsgs, msgStruct{Role: m.Role, Content: m.Content})
+			}
+			reqMap["messages"] = newMsgs
+			modified, err := json.Marshal(reqMap)
+			if err == nil {
+				return modified
+			}
+		}
+	}
+
 	return originalBody
+}
+
+// sanitizeContent replaces detected injection patterns using case-insensitive matching.
+func sanitizeContent(content, pattern string) (string, bool) {
+	lower := strings.ToLower(content)
+	patLower := strings.ToLower(pattern)
+	idx := strings.Index(lower, patLower)
+	if idx < 0 {
+		return content, false
+	}
+	content = content[:idx] + "[SANITIZED]" + content[idx+len(pattern):]
+	return content, true
 }

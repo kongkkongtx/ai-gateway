@@ -11,7 +11,10 @@ import (
 
 type contextKey string
 
-const APIKeyNameContextKey contextKey = "api_key_name" // Context key to store the authenticated key name
+const APIKeyNameContextKey contextKey = "api_key_name"
+const APIKeyRoleContextKey  contextKey = "api_key_role"
+const AdminRole                    = "admin"
+const ReadonlyRole                 = "readonly" // Context key to store the authenticated key name
 
 // Auth validates API keys from the Authorization header.
 // Uses constant-time comparison to prevent timing attacks.
@@ -19,12 +22,13 @@ const APIKeyNameContextKey contextKey = "api_key_name" // Context key to store t
 type Auth struct {
 	enabled bool
 	keys    map[string]string // Maps API key -> human-readable name
+	roles   map[string][]string // Maps API key -> roles
 	logger  *slog.Logger
 }
 
 // NewAuth creates an Auth middleware. When enabled is false, all requests pass through.
-func NewAuth(enabled bool, keys map[string]string, logger *slog.Logger) *Auth {
-	return &Auth{enabled: enabled, keys: keys, logger: logger}
+func NewAuth(enabled bool, keys map[string]string, roles map[string][]string, logger *slog.Logger) *Auth {
+	return &Auth{enabled: enabled, keys: keys, roles: roles, logger: logger}
 }
 
 // Middleware returns an HTTP handler that enforces API key authentication.
@@ -34,9 +38,35 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		// Allow unauthenticated access to admin and observability endpoints
+		// For admin GET/HEAD endpoints, still pass through (UI access)
+		// but store default admin role for permission checks
 		if !strings.HasPrefix(r.URL.Path, "/v1/") {
-			next.ServeHTTP(w, r)
+			if r.Method == "GET" || r.Method == "HEAD" {
+				ctx := context.WithValue(r.Context(), APIKeyRoleContextKey, AdminRole)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			// Admin write endpoints still require authentication
+			apiKey := r.Header.Get("Authorization")
+			if apiKey == "" {
+				http.Error(w, `{"error":{"message":"Missing API key for admin write","type":"auth_error","code":"missing_api_key"}}`, http.StatusUnauthorized)
+				return
+			}
+			if len(apiKey) > 7 && apiKey[:7] == "Bearer " {
+				apiKey = apiKey[7:]
+			}
+			name, ok := a.validate(apiKey)
+			if !ok {
+				http.Error(w, `{"error":{"message":"Invalid API key","type":"auth_error","code":"invalid_api_key"}}`, http.StatusUnauthorized)
+				return
+			}
+			ctx := context.WithValue(r.Context(), APIKeyNameContextKey, name)
+			if roles, ok := a.roles[name]; ok && len(roles) > 0 {
+				ctx = context.WithValue(ctx, APIKeyRoleContextKey, roles[0])
+			} else {
+				ctx = context.WithValue(ctx, APIKeyRoleContextKey, AdminRole)
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 		apiKey := r.Header.Get("Authorization")
@@ -53,8 +83,13 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 			http.Error(w, `{"error":{"message":"Invalid API key","type":"auth_error","code":"invalid_api_key"}}`, http.StatusUnauthorized)
 			return
 		}
-		// Store the key name in context for downstream use (rate limiting, audit logging)
+		// Store the key name and role in context for downstream use
 		ctx := context.WithValue(r.Context(), APIKeyNameContextKey, name)
+		if roles, ok := a.roles[name]; ok && len(roles) > 0 {
+			ctx = context.WithValue(ctx, APIKeyRoleContextKey, roles[0])
+		} else {
+			ctx = context.WithValue(ctx, APIKeyRoleContextKey, AdminRole)
+		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

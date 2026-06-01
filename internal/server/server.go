@@ -1,4 +1,4 @@
-﻿package server
+package server
 
 import (
 	"context"
@@ -22,6 +22,9 @@ import (
 	"github.com/yushi/ai-gateway/internal/metrics"
 	"github.com/yushi/ai-gateway/internal/cache"
 	"github.com/yushi/ai-gateway/internal/cost"
+	"github.com/yushi/ai-gateway/internal/prompt"
+	"github.com/yushi/ai-gateway/internal/webhook"
+	"github.com/yushi/ai-gateway/internal/plugin"
 	"github.com/yushi/ai-gateway/internal/config"
 	"github.com/yushi/ai-gateway/internal/provider"
 	"github.com/yushi/ai-gateway/internal/provider/anthropic"
@@ -51,6 +54,10 @@ type Gateway struct {
 	semanticRouter *semantic.Router
 	semanticCache  *semantic.Cache
 	costTracker    *cost.Tracker
+	auditStore     *middleware.AuditStore
+	promptManager  *prompt.Manager
+	webhookNotifier *webhook.Notifier
+	pluginManager   *plugin.Manager
 }
 
 func New(cfg *config.Config, configPath string) (*Gateway, error) {
@@ -148,6 +155,43 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 			"default_limit_output", cfg.Cost.DefaultLimit.OutputTokens)
 	}
 
+	// Initialize semantic middleware
+	var semanticMiddleware *middleware.SemanticMiddleware
+	if semRouter != nil || semCache != nil {
+		semanticMiddleware = middleware.NewSemantic(semRouter, semCache, logger)
+		logger.Info("semantic middleware initialized",
+			"router", semRouter != nil,
+			"cache", semCache != nil)
+	}
+
+
+	// Initialize prompt template manager
+	promptManager := prompt.NewManager()
+	logger.Info("prompt template manager initialized")
+
+	// Initialize webhook notifier
+	webhookNotifier := webhook.New(cfg.Webhook, logger)
+	if cfg.Webhook.Endpoints != nil && len(cfg.Webhook.Endpoints) > 0 {
+		webhookNotifier.Start()
+	}
+
+	// Initialize plugin manager
+	pluginManager := plugin.NewManager(cfg.Plugin, logger)
+	if len(cfg.Plugin.Plugins) > 0 {
+		logger.Info("plugin manager initialized", "count", len(cfg.Plugin.Plugins))
+	}
+
+	// Initialize audit store (internal ring buffer)
+	auditStore := middleware.NewAuditStore(10000)
+	logger.Info("audit store initialized", "capacity", 10000)
+
+	// Initialize cost middleware
+	var costMiddleware *middleware.CostMiddleware
+	if cfg.Cost.Enabled && costTracker != nil {
+		costMiddleware = middleware.NewCost(costTracker, logger)
+		logger.Info("cost middleware initialized")
+	}
+
 		gw := &Gateway{
 		cfg: cfg, router: m, balancer: b, metrics: collector,
 		logger: logger, adapters: adapters, providerMap: providerMap,
@@ -156,6 +200,10 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 		semanticRouter: semRouter,
 		semanticCache: semCache,
 		costTracker: costTracker,
+		auditStore: auditStore,
+		promptManager: promptManager,
+		webhookNotifier: webhookNotifier,
+		pluginManager:   pluginManager,
 	}
 
 	// Initialize security components
@@ -167,7 +215,18 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 			injDetector, piiRedactor,
 			cfg.Security.PromptInjection, cfg.Security.PII,
 			logger,
-		)
+			func(evtType, severity, title, msg string, details map[string]interface{}) {
+				if webhookNotifier != nil {
+					webhookNotifier.Send(webhook.Event{
+						Type:      webhook.EventType(evtType),
+						Timestamp: time.Now(),
+						Severity:  severity,
+						Title:     title,
+						Message:   msg,
+						Details:   details,
+					})
+				}
+			})
 		logger.Info("security middleware initialized",
 			"prompt_injection", cfg.Security.PromptInjection.Enabled,
 			"pii", cfg.Security.PII.Enabled)
@@ -180,14 +239,21 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	r.Use(chimw.RealIP)
 	r.Use(middleware.NewTracingMiddleware().Middleware)
 	r.Use(middleware.NewRecovery(logger).Middleware)
-	r.Use(middleware.NewAudit(logger).Middleware)
+	r.Use(middleware.NewAudit(logger, gw.auditStore).Middleware)
 	r.Use(middleware.NewRateLimiter(cfg.RateLimit, redisClient, logger).Middleware)
-	r.Use(middleware.NewAuth(cfg.Auth.Enabled, buildKeyMap(cfg.Auth.Keys), logger).Middleware)
+	r.Use(middleware.NewAuth(cfg.Auth.Enabled, buildKeyMap(cfg.Auth.Keys), buildRoleMap(cfg.Auth.Keys), logger).Middleware)
+	r.Use(middleware.NewAdminPermission().Middleware)
 	r.Use(chimw.Timeout(cfg.Server.WriteTimeout))
 	r.Use(middleware.NewCORS(nil).Middleware)
 	r.Use(middleware.NewCORS(nil).Middleware)
 	if securityMiddleware != nil {
 		r.Use(securityMiddleware.Middleware)
+	}
+	if semanticMiddleware != nil {
+		r.Use(semanticMiddleware.Middleware)
+	}
+	if costMiddleware != nil {
+		r.Use(costMiddleware.Middleware)
 	}
 
 
@@ -207,6 +273,18 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	r.Delete("/admin/routes/{id}", gw.handleDeleteRoute)
 	r.Get("/admin/config", gw.handleGetConfig)
 	r.Put("/admin/config", gw.handleUpdateConfig)
+	r.Get("/admin/audit-logs", gw.handleGetAuditLogs)
+	r.Get("/admin/cost-stats", gw.handleGetCostStats)
+	r.Get("/openapi.yaml", gw.handleOpenAPISpec)
+	r.Get("/admin/plugins", gw.handleListPlugins)
+	r.Post("/admin/plugins", gw.handleReloadPlugins)
+	r.Get("/admin/webhook", gw.handleGetWebhookConfig)
+	r.Put("/admin/webhook", gw.handleUpdateWebhookConfig)
+	r.Get("/admin/prompts", gw.handleListPrompts)
+	r.Post("/admin/prompts", gw.handleSavePrompt)
+	r.Get("/admin/prompts/{id}", gw.handleGetPrompt)
+	r.Delete("/admin/prompts/{id}", gw.handleDeletePrompt)
+	r.Post("/admin/prompts/{id}/versions", gw.handleAddPromptVersion)
 	r.Post("/v1/chat/completions", gw.handleChatCompletion)
 	// Serve UI static files for SPA
 	uiFS := http.FileServer(http.Dir("./ui/dist"))
@@ -392,6 +470,8 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	span.SetAttributes(attribute.String("ai.model", chatReq.Model))
+	rCtx := context.WithValue(r.Context(), middleware.ModelContextKey, chatReq.Model)
+	r = r.WithContext(rCtx)
 
 	// Extract query text for semantic operations
 	var queryText string
@@ -399,6 +479,25 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 		if chatReq.Messages[i].Role == "user" {
 			queryText = chatReq.Messages[i].Content
 			break
+		}
+	}
+
+	// Prompt template injection: prepend matching system prompt templates
+	if g.promptManager != nil {
+		templates := g.promptManager.FindByRouteMatch(chatReq.Model)
+		for _, tmpl := range templates {
+			if tmpl.Role == "system" {
+				rendered, err := tmpl.Render(nil)
+				if err == nil && rendered != "" {
+					chatReq.Messages = append([]openai.Message{
+						{Role: "system", Content: rendered},
+					}, chatReq.Messages...)
+					g.logger.Info("prompt template injected",
+						"template", tmpl.Name,
+						"version", tmpl.CurrentVer,
+						"model", chatReq.Model)
+				}
+			}
 		}
 	}
 
@@ -478,12 +577,30 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 		result, err := adapter.ChatCompletion(&chatReq)
 		if err == nil {
 			if result.Usage != nil {
+				rCtx := context.WithValue(r.Context(), middleware.TokensInContextKey, result.Usage.PromptTokens)
+				rCtx = context.WithValue(rCtx, middleware.TokensOutContextKey, result.Usage.CompletionTokens)
+				r = r.WithContext(rCtx)
 				g.metrics.RecordTokens("prompt", result.Model, upstream.Provider, result.Usage.PromptTokens)
 				g.metrics.RecordTokens("completion", result.Model, upstream.Provider, result.Usage.CompletionTokens)
 				g.metrics.RecordTokens("total", result.Model, upstream.Provider, result.Usage.TotalTokens)
 			if g.costTracker != nil && result.Usage != nil {
 				keyName, _ := r.Context().Value(middleware.APIKeyNameContextKey).(string)
 				g.costTracker.Record(keyName, result.Usage.PromptTokens, result.Usage.CompletionTokens)
+				// Check budget and send webhook alert if threshold exceeded
+				if g.webhookNotifier != nil && g.costTracker.ShouldAlert(keyName) {
+					g.webhookNotifier.Send(webhook.Event{
+						Type:      webhook.EventCostAlert,
+						Timestamp: time.Now(),
+						Severity:  "warning",
+						Title:     "Budget threshold exceeded for key: " + keyName,
+						Message:   fmt.Sprintf("API key \"%s\" has exceeded the alert threshold", keyName),
+						Details: map[string]interface{}{
+							"key_name": keyName,
+							"prompt_tokens": result.Usage.PromptTokens,
+							"completion_tokens": result.Usage.CompletionTokens,
+						},
+					})
+				}
 			}
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -555,6 +672,9 @@ func (g *Gateway) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if result.Usage != nil {
+				rCtx := context.WithValue(r.Context(), middleware.TokensInContextKey, result.Usage.PromptTokens)
+				rCtx = context.WithValue(rCtx, middleware.TokensOutContextKey, result.Usage.CompletionTokens)
+				r = r.WithContext(rCtx)
 		g.metrics.RecordTokens("prompt", embedReq.Model, upstream.Provider, result.Usage.PromptTokens)
 		g.metrics.RecordTokens("total", embedReq.Model, upstream.Provider, result.Usage.TotalTokens)
 	}
@@ -626,6 +746,14 @@ func buildKeyMap(keys []config.APIKey) map[string]string {
 	return m
 }
 
+func buildRoleMap(keys []config.APIKey) map[string][]string {
+	m := make(map[string][]string)
+	for _, k := range keys {
+		m[k.Name] = k.Roles
+	}
+	return m
+}
+
 func initLogger(cfg config.LogConfig) *slog.Logger {
 	var level slog.Level
 	switch cfg.Level {
@@ -649,3 +777,4 @@ func initLogger(cfg config.LogConfig) *slog.Logger {
 	}
 	return slog.New(handler)
 }
+

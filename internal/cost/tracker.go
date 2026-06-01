@@ -141,6 +141,38 @@ func (t *Tracker) ShouldAlert(keyName string) bool {
 	return pct >= t.cfg.DegradeConfig.AlertThreshold
 }
 
+// KeyStat holds aggregated usage for a single API key.
+type KeyStat struct {
+	KeyName      string `json:"key_name"`
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	TotalTokens  int    `json:"total_tokens"`
+	RecordCount  int    `json:"record_count"`
+}
+// GetStats returns aggregated usage stats per API key since the given cutoff time.
+func (t *Tracker) GetStats(since time.Time) []KeyStat {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	var stats []KeyStat
+	for keyName, records := range t.usage {
+		stat := KeyStat{KeyName: keyName}
+		for _, r := range records {
+			if r.Timestamp.Before(since) {
+				continue
+			}
+			stat.InputTokens += r.InputTokens
+			stat.OutputTokens += r.OutputTokens
+			stat.RecordCount++
+		}
+		stat.TotalTokens = stat.InputTokens + stat.OutputTokens
+		if stat.RecordCount > 0 {
+			stats = append(stats, stat)
+		}
+	}
+	return stats
+}
+
 // SaveToRedis persists usage records to Redis.
 func (t *Tracker) SaveToRedis(ctx context.Context, redisCli *cache.Client) error {
 	if redisCli == nil || !t.cfg.Enabled {

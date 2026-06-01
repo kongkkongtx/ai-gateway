@@ -1,0 +1,815 @@
+﻿openapi: "3.1.0"
+info:
+  title: AI Gateway API
+  description: |
+    Enterprise AI Gateway — 应用层 AI 治理中间件。
+    提供 OpenAI 兼容的推理接口和多维度管理 API。
+
+    ## 快速入门
+    ```bash
+    export GATEWAY_URL=http://localhost:8080
+    export API_KEY=sk-your-key
+
+    # 健康检查
+    curl $GATEWAY_URL/admin/health
+
+    # Chat Completion
+    curl $GATEWAY_URL/v1/chat/completions \
+      -H "Authorization: Bearer $API_KEY" \
+      -d '{"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}'
+    ```
+  version: "2.1.0"
+  contact:
+    name: AI Gateway Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://gateway.example.com
+    description: Production
+
+paths:
+  # ============================================
+  # Proxy API (OpenAI Compatible)
+  # ============================================
+  /v1/chat/completions:
+    post:
+      summary: Chat Completion (OpenAI compatible)
+      description: |
+        Streams or returns a chat completion from the routed upstream provider.
+        Supports streaming via SSE when `stream: true`.
+      operationId: createChatCompletion
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+            example: Bearer sk-your-key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, messages]
+              properties:
+                model:
+                  type: string
+                  example: gpt-4
+                messages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum: [system, user, assistant]
+                      content:
+                        type: string
+                  example:
+                    - role: user
+                      content: Hello
+                stream:
+                  type: boolean
+                  default: false
+                temperature:
+                  type: number
+                  format: float
+                  default: 1.0
+                max_tokens:
+                  type: integer
+                top_p:
+                  type: number
+                  format: float
+                stop:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Successful response (stream or non-stream)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /v1/embeddings:
+    post:
+      summary: Create Embeddings (OpenAI compatible)
+      operationId: createEmbedding
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, input]
+              properties:
+                model:
+                  type: string
+                input:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+      responses:
+        "200":
+          description: Embedding response
+
+  # ============================================
+  # Management API — System
+  # ============================================
+  /admin/health:
+    get:
+      summary: Health Check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Gateway is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /admin/status:
+    get:
+      summary: Gateway Status
+      description: Returns upstreams, routes, and overall status
+      operationId: getGatewayStatus
+      responses:
+        "200":
+          description: Gateway status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayStatus"
+
+  # ============================================
+  # Management API — Upstreams
+  # ============================================
+  /admin/upstreams:
+    get:
+      summary: List Upstreams
+      operationId: listUpstreams
+      responses:
+        "200":
+          description: Upstream list
+    post:
+      summary: Reload Upstreams (bulk replace)
+      operationId: reloadUpstreams
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/UpstreamConfig"
+      responses:
+        "200":
+          description: Upstreams reloaded
+
+  /admin/upstreams/single:
+    post:
+      summary: Add Single Upstream
+      operationId: addUpstream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpstreamConfig"
+      responses:
+        "200":
+          description: Upstream added
+
+  /admin/upstreams/{name}:
+    delete:
+      summary: Delete Upstream
+      operationId: deleteUpstream
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Upstream deleted
+
+  # ============================================
+  # Management API — Routes
+  # ============================================
+  /admin/routes:
+    get:
+      summary: List Routes
+      operationId: listRoutes
+      responses:
+        "200":
+          description: Route list
+    post:
+      summary: Reload Routes (bulk)
+      operationId: reloadRoutes
+
+  /admin/routes/single:
+    post:
+      summary: Add Single Route
+      operationId: addRoute
+
+  /admin/routes/{id}:
+    delete:
+      summary: Delete Route
+      operationId: deleteRoute
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+
+  # ============================================
+  # Management API — API Keys
+  # ============================================
+  /admin/keys:
+    get:
+      summary: List API Keys
+      operationId: listApiKeys
+      responses:
+        "200":
+          description: API key list
+    post:
+      summary: Add API Key
+      operationId: addApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, name]
+              properties:
+                key:
+                  type: string
+                name:
+                  type: string
+                roles:
+                  type: array
+                  items:
+                    type: string
+                    enum: [admin, readonly]
+      responses:
+        "200":
+          description: Key added
+
+  /admin/keys/{key}:
+    delete:
+      summary: Delete API Key
+      operationId: deleteApiKey
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+
+  # ============================================
+  # Management API — Config
+  # ============================================
+  /admin/config:
+    get:
+      summary: Get Gateway Config
+      operationId: getConfig
+      responses:
+        "200":
+          description: Full gateway configuration
+    put:
+      summary: Update Gateway Config
+      operationId: updateConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigUpdate"
+      responses:
+        "200":
+          description: Config updated
+
+  # ============================================
+  # Management API — Observability
+  # ============================================
+  /admin/audit-logs:
+    get:
+      summary: Query Audit Logs
+      operationId: queryAuditLogs
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: level
+          in: query
+          schema:
+            type: string
+            enum: [info, warn, error]
+        - name: key_name
+          in: query
+          schema:
+            type: string
+        - name: path
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
+  /admin/cost-stats:
+    get:
+      summary: Get Cost Statistics
+      operationId: getCostStats
+      responses:
+        "200":
+          description: Token usage stats per key
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CostStat"
+
+  /admin/metrics:
+    get:
+      summary: Prometheus Metrics
+      operationId: getMetrics
+      responses:
+        "200":
+          description: Prometheus metrics in text format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  # ============================================
+  # Management API — Webhooks
+  # ============================================
+  /admin/webhook:
+    get:
+      summary: Get Webhook Config
+      operationId: getWebhookConfig
+      responses:
+        "200":
+          description: Webhook configuration
+    put:
+      summary: Update Webhook Config
+      operationId: updateWebhookConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookConfig"
+      responses:
+        "200":
+          description: Webhook config updated
+
+  # ============================================
+  # Management API — Prompt Templates
+  # ============================================
+  /admin/prompts:
+    get:
+      summary: List Prompt Templates
+      operationId: listPrompts
+      responses:
+        "200":
+          description: Prompt template list
+    post:
+      summary: Save Prompt Template
+      operationId: savePrompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplate"
+      responses:
+        "200":
+          description: Template saved
+
+  /admin/prompts/{id}:
+    get:
+      summary: Get Prompt Template
+      operationId: getPrompt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Prompt template details
+    delete:
+      summary: Delete Prompt Template
+      operationId: deletePrompt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template deleted
+
+  /admin/prompts/{id}/versions:
+    post:
+      summary: Add Prompt Version
+      operationId: addPromptVersion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                created_by:
+                  type: string
+                comment:
+                  type: string
+      responses:
+        "200":
+          description: Version added
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      description: API key from Authorization header
+
+  schemas:
+    UpstreamConfig:
+      type: object
+      properties:
+        name:
+          type: string
+          example: deepseek-primary
+        endpoint:
+          type: string
+          format: uri
+          example: https://api.deepseek.com
+        provider:
+          type: string
+          example: openai
+        weight:
+          type: integer
+          default: 1
+        api_token:
+          type: string
+        timeout:
+          type: string
+          example: 30s
+        model:
+          type: string
+
+    RouteConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        model:
+          type: string
+          example: gpt-4*
+        upstream:
+          type: string
+        fallbacks:
+          type: array
+          items:
+            type: string
+        priority:
+          type: integer
+          default: 50
+
+    AuditLogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        method:
+          type: string
+        path:
+          type: string
+        status:
+          type: integer
+        duration:
+          type: string
+        remote_addr:
+          type: string
+        api_key_name:
+          type: string
+        level:
+          type: string
+          enum: [info, warn, error]
+        model:
+          type: string
+        tokens_in:
+          type: integer
+        tokens_out:
+          type: integer
+
+    CostStat:
+      type: object
+      properties:
+        key_name:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        record_count:
+          type: integer
+
+    ChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: chat.completion
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              message:
+                type: object
+                properties:
+                  role:
+                    type: string
+                  content:
+                    type: string
+              finish_reason:
+                type: string
+        usage:
+          type: object
+          properties:
+            prompt_tokens:
+              type: integer
+            completion_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+
+    WebhookConfig:
+      type: object
+      properties:
+        endpoints:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              url:
+                type: string
+                format: uri
+              enabled:
+                type: boolean
+              events:
+                type: array
+                items:
+                  type: string
+                  enum:
+                    - cost.alert
+                    - security.block
+                    - security.sanitize
+                    - upstream.down
+                    - upstream.up
+              retry:
+                type: integer
+                default: 3
+
+    PromptTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        role:
+          type: string
+          enum: [system, user, assistant]
+          default: system
+        route_match:
+          type: string
+          example: gpt-4*
+        variables:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              default:
+                type: string
+              desc:
+                type: string
+        current_version:
+          type: integer
+        versions:
+          type: array
+          items:
+            type: object
+            properties:
+              version:
+                type: integer
+              content:
+                type: string
+              variables:
+                type: array
+                items:
+                  type: object
+              created_at:
+                type: string
+                format: date-time
+              created_by:
+                type: string
+              comment:
+                type: string
+
+    ConfigUpdate:
+      type: object
+      properties:
+        rate_limit:
+          type: object
+        log:
+          type: object
+        auth:
+          type: object
+        security:
+          type: object
+        semantic:
+          type: object
+        semantic_cache:
+          type: object
+        cost:
+          type: object
+
+    GatewayStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        upstreams:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              endpoint:
+                type: string
+              provider:
+                type: string
+              healthy:
+                type: boolean
+              weight:
+                type: integer
+              active_conns:
+                type: integer
+        routes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              model:
+                type: string
+              upstream:
+                type: string
+              priority:
+                type: integer
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  type:
+                    type: string
+                  code:
+                    type: string
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  type:
+                    type: string
+
+x-webhooks:
+  cost.alert:
+    post:
+      summary: Cost budget threshold exceeded
+      operationId: webhookCostAlert
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookEvent"
+  security.block:
+    post:
+      summary: Security event (injection blocked)
+      operationId: webhookSecurityBlock
+  security.sanitize:
+    post:
+      summary: Security event (PII sanitized)
+      operationId: webhookSecuritySanitize
+  upstream.down:
+    post:
+      summary: Upstream health check failed
+      operationId: webhookUpstreamDown
+  upstream.up:
+    post:
+      summary: Upstream recovered
+      operationId: webhookUpstreamUp
+    WebhookEvent:
+      type: object
+      properties:
+        type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        severity:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+

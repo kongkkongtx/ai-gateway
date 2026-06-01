@@ -8,7 +8,7 @@ import {
   Check,
   ChevronDown,
   Square,
-  Sliders,
+  Sliders, EyeOff, Eye, AlertTriangle,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -392,3 +392,4 @@ export default function Playground() {
     </div>
   )
 }
+

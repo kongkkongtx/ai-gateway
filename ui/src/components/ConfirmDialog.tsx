@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { AlertTriangle, X } from 'lucide-react'
 
 interface ConfirmDialogProps {
@@ -77,3 +76,5 @@ export default function ConfirmDialog({
     </div>
   )
 }
+
+
