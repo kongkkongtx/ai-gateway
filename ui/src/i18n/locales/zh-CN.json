@@ -1,0 +1,118 @@
+{
+  "app": {
+    "title": "AI Gateway",
+    "subtitle": "企业 AI 治理网关"
+  },
+  "nav": {
+    "dashboard": "仪表盘",
+    "upstreams": "上游管理",
+    "routes": "路由管理",
+    "keys": "密钥管理",
+    "playground": "接口调试",
+    "prompts": "提示词模版",
+    "audit": "审计日志",
+    "settings": "系统设置"
+  },
+  "dashboard": {
+    "title": "仪表盘",
+    "subtitle": "AI Gateway 实时监控",
+    "all_ok": "所有系统运行正常",
+    "degraded": "服务降级",
+    "input_tokens": "输入Token",
+    "output_tokens": "输出Token",
+    "active_routes": "活跃路由",
+    "active_upstreams": "活跃上游"
+  },
+  "upstreams": {
+    "title": "上游管理",
+    "add": "添加上游",
+    "name": "名称",
+    "endpoint": "端点",
+    "provider": "提供商",
+    "weight": "权重",
+    "healthy": "健康",
+    "active_conns": "活跃连接",
+    "no_upstreams": "暂无上游配置",
+    "confirm_delete": "确定删除此上游吗？"
+  },
+  "routes": {
+    "title": "路由管理",
+    "add": "添加路由",
+    "model": "模型匹配",
+    "upstream": "目标上游",
+    "fallbacks": "备用上游",
+    "priority": "优先级",
+    "no_routes": "暂无路由配置"
+  },
+  "keys": {
+    "title": "API Key 管理",
+    "add": "添加密钥",
+    "key": "密钥",
+    "name": "名称",
+    "roles": "角色",
+    "created": "创建时间",
+    "no_keys": "暂无密钥"
+  },
+  "playground": {
+    "title": "接口调试",
+    "send": "发送请求",
+    "model": "模型",
+    "system_prompt": "系统提示词",
+    "user_message": "用户消息",
+    "response": "响应结果",
+    "streaming": "流式输出",
+    "placeholder": "输入消息..."
+  },
+  "prompts": {
+    "title": "提示词模版",
+    "add": "创建模版",
+    "name": "模版名称",
+    "description": "描述",
+    "route_match": "路由匹配",
+    "version": "版本",
+    "variables": "变量",
+    "content": "内容",
+    "no_prompts": "暂无模版"
+  },
+  "audit": {
+    "title": "审计日志",
+    "method": "方法",
+    "path": "路径",
+    "status": "状态码",
+    "duration": "耗时",
+    "api_key": "API Key",
+    "model": "模型",
+    "tokens": "Token",
+    "no_logs": "暂无日志"
+  },
+  "settings": {
+    "title": "系统设置",
+    "config": "网关配置",
+    "save": "保存配置",
+    "saved": "配置已保存",
+    "version": "版本",
+    "rollback": "回滚",
+    "versions": "配置历史"
+  },
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "confirm": "确认",
+    "close": "关闭",
+    "loading": "加载中...",
+    "error": "出错了",
+    "success": "操作成功",
+    "copy": "复制",
+    "copied": "已复制",
+    "refresh": "刷新",
+    "search": "搜索",
+    "no_data": "暂无数据",
+    "actions": "操作"
+  },
+  "lang": {
+    "switch": "English",
+    "zh": "中文",
+    "en": "English"
+  }
+}

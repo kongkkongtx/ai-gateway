@@ -1,4 +1,4 @@
-server:
+﻿server:
     host: 0.0.0.0
     port: 8080
     read_timeout: 30s
@@ -111,6 +111,47 @@ security:
     pii:
         enabled: false
         action: mask
+
+
+# ============================================================
+# Phase 5: Prompt Templates, Webhooks, Plugins
+# ============================================================
+
+# Prompt template management (disabled by default)
+prompt_templates:
+    enabled: false
+
+# Webhook notifications for events (disabled by default)
+webhook:
+    endpoints: []
+    # - name: slack-alerts
+    #   url: https://hooks.slack.com/services/xxx
+    #   enabled: false
+    #   events:
+    #     - cost.alert
+    #     - security.block
+    #     - upstream.down
+    #   retry: 3
+
+# Plugin system (disabled by default)
+plugins:
+    plugins: []
+    # - name: custom-auth
+    #   type: security
+    #   endpoint: http://localhost:9001/plugin
+    #   enabled: false
+    #   timeout: 5s
+    # - name: custom-router
+    #   type: router
+    #   endpoint: http://localhost:9002/plugin
+    #   enabled: false
+
+# Audit log persistence (file-based, disabled by default)
+audit:
+    enabled: false
+    file_path: data/audit.jsonl
+    buffer_size: 10000
+
 log:
     level: info
     format: text

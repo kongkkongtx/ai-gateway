@@ -22,10 +22,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      GATEWAY_REDIS_ADDR: redis:6379
-      GATEWAY_REDIS_DB: "0"
+      - GATEWAY_REDIS_ADDR=redis:6379
+      - GATEWAY_REDIS_DB=0
     volumes:
-      - ./configs/gateway.yaml:/app/configs/gateway.yaml
+      - ./configs/gateway.yaml:/app/configs/gateway.yaml:ro
+      - gateway-audit:/app/data
+      - gateway-config-versions:/app/configs
     depends_on:
       redis:
         condition: service_healthy
@@ -37,3 +39,5 @@ services:
 
 volumes:
   redis-data:
+  gateway-audit:
+  gateway-config-versions:

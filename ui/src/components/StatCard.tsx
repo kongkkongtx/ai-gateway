@@ -6,12 +6,13 @@ interface StatCardProps {
   icon: ReactNode
   trend?: { value: string; positive: boolean }
   loading?: boolean
+  color?: string
 }
 
-export default function StatCard({ label, value, icon, trend, loading }: StatCardProps) {
+export default function StatCard({ label, value, icon, trend, loading, color }: StatCardProps) {
   return (
     <div className="card flex items-start gap-4">
-      <div className="p-2.5 rounded-lg bg-brand-600/10 text-brand-400 border border-brand-600/20">
+      <div className={`p-2.5 rounded-lg border ${color === 'accent' ? 'bg-accent-600/10 text-accent-400 border-accent-600/20' : color === 'warning' ? 'bg-yellow-600/10 text-yellow-400 border-yellow-600/20' : color === 'purple' ? 'bg-purple-600/10 text-purple-400 border-purple-600/20' : color === 'cyan' ? 'bg-cyan-600/10 text-cyan-400 border-cyan-600/20' : 'bg-brand-600/10 text-brand-400 border-brand-600/20'}`}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">

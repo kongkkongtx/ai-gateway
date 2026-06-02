@@ -1,0 +1,118 @@
+{
+  "app": {
+    "title": "AI Gateway",
+    "subtitle": "Enterprise AI Governance Gateway"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "upstreams": "Upstreams",
+    "routes": "Routes",
+    "keys": "API Keys",
+    "playground": "Playground",
+    "prompts": "Prompts",
+    "audit": "Audit Logs",
+    "settings": "Settings"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Real-time AI Gateway monitoring",
+    "all_ok": "All systems operational",
+    "degraded": "Service degraded",
+    "input_tokens": "Input Tokens",
+    "output_tokens": "Output Tokens",
+    "active_routes": "Active Routes",
+    "active_upstreams": "Active Upstreams"
+  },
+  "upstreams": {
+    "title": "Upstreams",
+    "add": "Add Upstream",
+    "name": "Name",
+    "endpoint": "Endpoint",
+    "provider": "Provider",
+    "weight": "Weight",
+    "healthy": "Healthy",
+    "active_conns": "Active Conns",
+    "no_upstreams": "No upstreams configured",
+    "confirm_delete": "Delete this upstream?"
+  },
+  "routes": {
+    "title": "Routes",
+    "add": "Add Route",
+    "model": "Model Pattern",
+    "upstream": "Upstream",
+    "fallbacks": "Fallbacks",
+    "priority": "Priority",
+    "no_routes": "No routes configured"
+  },
+  "keys": {
+    "title": "API Keys",
+    "add": "Add Key",
+    "key": "Key",
+    "name": "Name",
+    "roles": "Roles",
+    "created": "Created",
+    "no_keys": "No keys configured"
+  },
+  "playground": {
+    "title": "Playground",
+    "send": "Send",
+    "model": "Model",
+    "system_prompt": "System Prompt",
+    "user_message": "User Message",
+    "response": "Response",
+    "streaming": "Streaming",
+    "placeholder": "Type a message..."
+  },
+  "prompts": {
+    "title": "Prompt Templates",
+    "add": "Create Template",
+    "name": "Template Name",
+    "description": "Description",
+    "route_match": "Route Match",
+    "version": "Version",
+    "variables": "Variables",
+    "content": "Content",
+    "no_prompts": "No templates"
+  },
+  "audit": {
+    "title": "Audit Logs",
+    "method": "Method",
+    "path": "Path",
+    "status": "Status",
+    "duration": "Duration",
+    "api_key": "API Key",
+    "model": "Model",
+    "tokens": "Tokens",
+    "no_logs": "No logs"
+  },
+  "settings": {
+    "title": "Settings",
+    "config": "Gateway Config",
+    "save": "Save Config",
+    "saved": "Config saved",
+    "version": "Version",
+    "rollback": "Rollback",
+    "versions": "Config History"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "confirm": "Confirm",
+    "close": "Close",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "copy": "Copy",
+    "copied": "Copied",
+    "refresh": "Refresh",
+    "search": "Search",
+    "no_data": "No data",
+    "actions": "Actions"
+  },
+  "lang": {
+    "switch": "中文",
+    "zh": "中文",
+    "en": "English"
+  }
+}

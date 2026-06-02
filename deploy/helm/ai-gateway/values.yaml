@@ -1,0 +1,131 @@
+﻿# Default values for ai-gateway
+replicaCount: 2
+
+image:
+  repository: ghcr.io/yushi/ai-gateway
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: gateway.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Redis dependency
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+
+# Gateway configuration
+gateway:
+  config:
+    server:
+      host: "0.0.0.0"
+      port: 8080
+      read_timeout: 30s
+      write_timeout: 120s
+      shutdown_timeout: 10s
+    auth:
+      enabled: true
+      keys:
+        - key: sk-gateway-admin-key
+          name: admin
+          roles:
+            - admin
+    redis:
+      addr: "ai-gateway-redis-master:6379"
+      password: ""
+      db: 0
+    log:
+      level: info
+      format: json
+    audit:
+      enabled: false
+      file_path: /data/audit.jsonl
+      buffer_size: 10000
+    security:
+      prompt_injection:
+        enabled: false
+        action: block
+        risk_threshold: medium
+      pii:
+        enabled: false
+        action: mask
+    semantic:
+      enabled: false
+    semantic_cache:
+      enabled: false
+    cost:
+      enabled: false
+    prompt_templates:
+      enabled: false
+    webhook:
+      endpoints: []
+    plugins:
+      plugins: []
+    routes: []
+    upstreams: []
+
+  # Extra config file content (overrides gateway.config)
+  configContent: ""
+
+  # Persist audit logs
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+# Prometheus ServiceMonitor
+serviceMonitor:
+  enabled: false
+  interval: 30s

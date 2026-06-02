@@ -7,22 +7,24 @@ package security
 type Config struct {
 	PromptInjection PromptInjectionConfig `yaml:"prompt_injection"`
 	PII             PIIConfig             `yaml:"pii"`
+	IPAllowlist     []string              `yaml:"ip_allowlist,omitempty" json:"ip_allowlist,omitempty"`
+	IPBlocklist     []string              `yaml:"ip_blocklist,omitempty" json:"ip_blocklist,omitempty"`
 }
 
 // PromptInjectionConfig controls prompt injection detection behavior.
 type PromptInjectionConfig struct {
 	Enabled     bool     `yaml:"enabled"`
-	Action      string   `yaml:"action"`       // "block" | "log" | "sanitize"
+	Action      string   `yaml:"action"`        // "block" | "log" | "sanitize"
 	RiskThresh  string   `yaml:"risk_threshold"` // "low" | "medium" | "high" | "critical"
-	Keywords    []string `yaml:"keywords,omitempty"`  // Additional custom keywords
-	ExternalURL string   `yaml:"external_url,omitempty"` // Optional external detection API
+	Keywords    []string `yaml:"keywords,omitempty"`
+	ExternalURL string   `yaml:"external_url,omitempty"`
 }
 
 // PIIConfig controls personally identifiable information redaction.
 type PIIConfig struct {
 	Enabled bool     `yaml:"enabled"`
-	Action  string   `yaml:"action"`  // "mask" | "hash" | "block"
-	Types   []string `yaml:"types,omitempty"` // Subset of: email, phone, ip, api_key, ssn, credit_card
+	Action  string   `yaml:"action"`
+	Types   []string `yaml:"types,omitempty"`
 }
 
 // DefaultConfig returns a disabled-by-default security config.
@@ -43,16 +45,16 @@ func DefaultConfig() Config {
 // InjectionResult describes a detected prompt injection attempt.
 type InjectionResult struct {
 	Detected bool   `json:"detected"`
-	Risk     string `json:"risk"`     // "low", "medium", "high", "critical"
-	Pattern  string `json:"pattern"`  // Name of the matched pattern
-	Message  string `json:"message"`  // Human-readable description
+	Risk     string `json:"risk"`
+	Pattern  string `json:"pattern"`
+	Message  string `json:"message"`
 }
 
 // PIIMatch describes a single detected PII instance.
 type PIIMatch struct {
-	Type     string `json:"type"`     // "email", "phone", "ip", etc.
-	Original string `json:"original"` // The original sensitive text
-	Redacted string `json:"redacted"` // The replacement text
-	Start    int    `json:"start"`    // Start position in the text
-	End      int    `json:"end"`      // End position in the text
+	Type     string `json:"type"`
+	Original string `json:"original"`
+	Redacted string `json:"redacted"`
+	Start    int    `json:"start"`
+	End      int    `json:"end"`
 }

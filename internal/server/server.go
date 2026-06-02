@@ -36,6 +36,7 @@ import (
 	"github.com/yushi/ai-gateway/internal/semantic"
 	"github.com/yushi/ai-gateway/internal/server/middleware"
 	"github.com/yushi/ai-gateway/internal/tracing"
+	"github.com/yushi/ai-gateway/internal/user"
 )
 
 type Gateway struct {
@@ -54,10 +55,11 @@ type Gateway struct {
 	semanticRouter *semantic.Router
 	semanticCache  *semantic.Cache
 	costTracker    *cost.Tracker
-	auditStore     *middleware.AuditStore
+	auditStore     middleware.AuditStore
 	promptManager  *prompt.Manager
 	webhookNotifier *webhook.Notifier
 	pluginManager   *plugin.Manager
+	userStore       *user.Store
 }
 
 func New(cfg *config.Config, configPath string) (*Gateway, error) {
@@ -181,9 +183,21 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 		logger.Info("plugin manager initialized", "count", len(cfg.Plugin.Plugins))
 	}
 
-	// Initialize audit store (internal ring buffer)
-	auditStore := middleware.NewAuditStore(10000)
-	logger.Info("audit store initialized", "capacity", 10000)
+	// Initialize audit store with file persistence
+	var auditStore middleware.AuditStore
+	if cfg.Audit.Enabled && cfg.Audit.FilePath != "" {
+		fileStore, err := middleware.NewFileAuditStore(cfg.Audit.FilePath, cfg.Audit.BufferSize)
+		if err != nil {
+			logger.Warn("failed to create file audit store, falling back to memory", "error", err)
+			auditStore = middleware.NewMemoryAuditStore(10000)
+		} else {
+			auditStore = fileStore
+			logger.Info("file audit store initialized", "path", cfg.Audit.FilePath, "buffer", cfg.Audit.BufferSize)
+		}
+	} else {
+		auditStore = middleware.NewMemoryAuditStore(10000)
+		logger.Info("memory audit store initialized", "capacity", 10000)
+	}
 
 	// Initialize cost middleware
 	var costMiddleware *middleware.CostMiddleware
@@ -192,10 +206,19 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 		logger.Info("cost middleware initialized")
 	}
 
-		gw := &Gateway{
-		cfg: cfg, router: m, balancer: b, metrics: collector,
+		// Initialize metrics collector for the test handler
+	metricsReg := prometheus.NewRegistry()
+	metricsCollector := metrics.NewCollector(metricsReg)
+
+	// Initialize user store for JWT authentication
+	userStore, _ := user.NewStore("data/users.json")
+	if userStore != nil {
+		logger.Info("user store initialized", "path", "data/users.json")
+	}
+	gw := &Gateway{
+		cfg: cfg, router: m, balancer: b, metrics: metricsCollector,
 		logger: logger, adapters: adapters, providerMap: providerMap,
-		tp: tp, configPath: configPath,
+		tp: tp,
 		redisClient: redisClient,
 		semanticRouter: semRouter,
 		semanticCache: semCache,
@@ -204,6 +227,7 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 		promptManager: promptManager,
 		webhookNotifier: webhookNotifier,
 		pluginManager:   pluginManager,
+		userStore: userStore,
 	}
 
 	// Initialize security components
@@ -213,7 +237,7 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 		piiRedactor := security.NewPIIRedactor(cfg.Security.PII.Types, cfg.Security.PII.Action)
 		securityMiddleware = middleware.NewSecurity(
 			injDetector, piiRedactor,
-			cfg.Security.PromptInjection, cfg.Security.PII,
+			cfg.Security,
 			logger,
 			func(evtType, severity, title, msg string, details map[string]interface{}) {
 				if webhookNotifier != nil {
@@ -241,7 +265,11 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	r.Use(middleware.NewRecovery(logger).Middleware)
 	r.Use(middleware.NewAudit(logger, gw.auditStore).Middleware)
 	r.Use(middleware.NewRateLimiter(cfg.RateLimit, redisClient, logger).Middleware)
-	r.Use(middleware.NewAuth(cfg.Auth.Enabled, buildKeyMap(cfg.Auth.Keys), buildRoleMap(cfg.Auth.Keys), logger).Middleware)
+	authMiddleware := middleware.NewAuth(cfg.Auth.Enabled, buildKeyMap(cfg.Auth.Keys), buildRoleMap(cfg.Auth.Keys), logger)
+	if gw.userStore != nil {
+		authMiddleware.SetUserStore(gw.userStore)
+	}
+	r.Use(authMiddleware.Middleware)
 	r.Use(middleware.NewAdminPermission().Middleware)
 	r.Use(chimw.Timeout(cfg.Server.WriteTimeout))
 	r.Use(middleware.NewCORS(nil).Middleware)
@@ -276,6 +304,9 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	r.Get("/admin/audit-logs", gw.handleGetAuditLogs)
 	r.Get("/admin/cost-stats", gw.handleGetCostStats)
 	r.Get("/openapi.yaml", gw.handleOpenAPISpec)
+	r.Get("/admin/config/versions", gw.handleConfigVersions)
+	r.Post("/admin/config/rollback/{version}", gw.handleConfigRollback)
+	r.Get("/admin/health/history", gw.handleHealthHistory)
 	r.Get("/admin/plugins", gw.handleListPlugins)
 	r.Post("/admin/plugins", gw.handleReloadPlugins)
 	r.Get("/admin/webhook", gw.handleGetWebhookConfig)
@@ -285,6 +316,15 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	r.Get("/admin/prompts/{id}", gw.handleGetPrompt)
 	r.Delete("/admin/prompts/{id}", gw.handleDeletePrompt)
 	r.Post("/admin/prompts/{id}/versions", gw.handleAddPromptVersion)
+		r.Post("/admin/login", gw.handleLogin)
+	r.Get("/admin/users", gw.handleListUsers)
+	r.Post("/admin/users", gw.handleCreateUser)
+	r.Delete("/admin/users/{username}", gw.handleDeleteUser)
+	r.Put("/admin/users/{username}/role", gw.handleUpdateUserRole)
+	r.Post("/admin/keys/{key}/rotate", gw.handleRotateKey)
+	r.Get("/admin/security/policies", gw.handleGetSecurityPolicies)
+	r.Put("/admin/security/policies", gw.handleUpdateSecurityPolicies)
+
 	r.Post("/v1/chat/completions", gw.handleChatCompletion)
 	// Serve UI static files for SPA
 	uiFS := http.FileServer(http.Dir("./ui/dist"))
@@ -473,14 +513,6 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 	rCtx := context.WithValue(r.Context(), middleware.ModelContextKey, chatReq.Model)
 	r = r.WithContext(rCtx)
 
-	// Extract query text for semantic operations
-	var queryText string
-	for i := len(chatReq.Messages) - 1; i >= 0; i-- {
-		if chatReq.Messages[i].Role == "user" {
-			queryText = chatReq.Messages[i].Content
-			break
-		}
-	}
 
 	// Prompt template injection: prepend matching system prompt templates
 	if g.promptManager != nil {
@@ -501,39 +533,56 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Semantic routing: override model based on query content
-	if g.semanticRouter != nil && queryText != "" {
-		if match, score, err := g.semanticRouter.Match(queryText); err == nil && match != nil {
-			g.logger.Info("semantic route matched",
-				"category", match.Name,
-				"score", score,
-				"target", match.Target,
-				"original_model", chatReq.Model)
-			chatReq.Model = match.Target
-			span.SetAttributes(attribute.String("semantic.category", match.Name))
-			span.SetAttributes(attribute.Float64("semantic.score", score))
+	// ---- Plugin: Security ----
+	// Run security plugins to check or transform messages
+	if g.pluginManager != nil {
+		secPlugins := g.pluginManager.SecurityPlugins()
+		if len(secPlugins) > 0 {
+			pluginMsgs := messagesToPlugin(chatReq.Messages)
+			for name, sec := range secPlugins {
+				modified, err := sec.CheckPrompt(r.Context(), pluginMsgs)
+				if err != nil {
+					g.logger.Warn("security plugin blocked request", "plugin", name, "error", err)
+					writeError(w, http.StatusForbidden, "Request blocked by security policy")
+					return
+				}
+				if modified != nil {
+					pluginMsgs = modified
+					g.logger.Info("security plugin modified messages", "plugin", name)
+				}
+			}
+			chatReq.Messages = pluginToMessages(pluginMsgs)
 		}
 	}
 
-	// Semantic cache lookup (before upstream call)
-	if g.semanticCache != nil && !chatReq.Stream && queryText != "" {
-		if cachedResp, score, err := g.semanticCache.Get(queryText, g.cfg.SemanticCache.Threshold); err == nil && cachedResp != nil {
-			g.logger.Info("semantic cache hit", "score", score)
-			g.metrics.RecordRequest("POST", "/v1/chat/completions", "200", chatReq.Model, "cache", time.Since(start))
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("X-Cache", "HIT")
-			w.Header().Set("X-Cache-Score", fmt.Sprintf("%.3f", score))
-			w.Write(cachedResp)
-			return
-		}
-	}
+// Semantic routing is handled by middleware
+
+// Semantic cache lookup is handled by middleware
 
 	route := g.router.Match(chatReq.Model)
 	var upstreamNames []string
 	if route != nil {
 		upstreamNames = append([]string{route.Upstream}, route.Fallbacks...)
 	} else {
-		if u := g.balancer.Next(); u != nil {
+		// ---- Plugin: Router ----
+		// Try router plugins for upstream selection
+		var pluginUpstream string
+		if g.pluginManager != nil {
+			routerPlugins := g.pluginManager.RouterPlugins()
+			if len(routerPlugins) > 0 {
+				pluginMsgs := messagesToPlugin(chatReq.Messages)
+				for name, rt := range routerPlugins {
+					if upstream, err := rt.SelectUpstream(r.Context(), chatReq.Model, pluginMsgs); err == nil && upstream != "" {
+						pluginUpstream = upstream
+						g.logger.Info("router plugin selected upstream", "plugin", name, "upstream", upstream)
+						break
+					}
+				}
+			}
+		}
+		if pluginUpstream != "" {
+			upstreamNames = []string{pluginUpstream}
+		} else if u := g.balancer.Next(); u != nil {
 			upstreamNames = []string{u.Name}
 		}
 	}
@@ -585,7 +634,7 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 				g.metrics.RecordTokens("total", result.Model, upstream.Provider, result.Usage.TotalTokens)
 			if g.costTracker != nil && result.Usage != nil {
 				keyName, _ := r.Context().Value(middleware.APIKeyNameContextKey).(string)
-				g.costTracker.Record(keyName, result.Usage.PromptTokens, result.Usage.CompletionTokens)
+				// Cost recording is handled by cost middleware
 				// Check budget and send webhook alert if threshold exceeded
 				if g.webhookNotifier != nil && g.costTracker.ShouldAlert(keyName) {
 					g.webhookNotifier.Send(webhook.Event{
@@ -605,12 +654,6 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-
-			// Cache the response for future semantic lookups
-			if g.semanticCache != nil && !chatReq.Stream {
-				respBytes, _ := json.Marshal(result)
-				g.semanticCache.Set(queryText, respBytes, result.Model)
-			}
 
 			json.NewEncoder(w).Encode(result)
 			g.metrics.RecordRequest("POST", "/v1/chat/completions", "200", chatReq.Model, upstream.Provider, time.Since(start))
@@ -730,6 +773,161 @@ func (g *Gateway) proxyDirect(w http.ResponseWriter, r *http.Request, endpoint s
 	io.Copy(w, httpResp.Body)
 }
 
+// NewForTest creates a Gateway for testing without starting the HTTP server.
+func NewForTest(cfg *config.Config) (*Gateway, error) {
+	return New(cfg, "")
+}
+
+// Handler returns the HTTP handler for use with httptest.
+func (g *Gateway) Handler() http.Handler {
+	logger := initLogger(g.cfg.Log)
+
+	tp, err := tracing.Init("ai-gateway-test")
+	if err != nil {
+		logger.Warn("failed to init tracing for test", "error", err)
+	}
+
+	m := router.NewMatcher(g.cfg.Routes)
+	b := balancer.New(logger)
+
+	adapters := make(map[string]provider.ProviderAdapter)
+	providerMap := make(map[string]string)
+
+	for _, u := range g.cfg.Upstream {
+		b.AddUpstream(u.Name, u.Endpoint, u.Provider, u.Weight)
+		switch u.Provider {
+		case "openai":
+			adapters[u.Name] = openai.NewAdapter(u.Endpoint, u.APIToken, u.Model, u.Timeout)
+		case "anthropic":
+			adapters[u.Name] = anthropic.NewAdapter(u.Endpoint, u.APIToken, u.Model, u.Timeout)
+		case "google", "gemini":
+			adapters[u.Name] = google.NewAdapter(u.Endpoint, u.APIToken, u.Model, u.Timeout)
+		case "azure":
+			adapters[u.Name] = azure.NewAdapter(u.Endpoint, u.APIToken, u.Model, u.Timeout, u.APIVersion)
+		}
+		providerMap[u.Name] = u.Provider
+	}
+
+	// Initialize Redis (nil if not configured)
+	var redisClient *cache.Client
+	if g.cfg.Redis.Addr != "" {
+		redisClient = cache.New(cache.Config{
+			Addr:     g.cfg.Redis.Addr,
+			Password: g.cfg.Redis.Password,
+			DB:       g.cfg.Redis.DB,
+		})
+	}
+
+	// Semantic middleware
+	var semanticMiddleware *middleware.SemanticMiddleware
+	if g.semanticRouter != nil || g.semanticCache != nil {
+		semanticMiddleware = middleware.NewSemantic(g.semanticRouter, g.semanticCache, logger)
+	}
+
+	// Cost middleware
+	var costMiddleware *middleware.CostMiddleware
+	if g.costTracker != nil {
+		costMiddleware = middleware.NewCost(g.costTracker, logger)
+	}
+
+	// Security middleware
+	var securityMiddleware *middleware.SecurityMiddleware
+	if g.cfg.Security.PromptInjection.Enabled || g.cfg.Security.PII.Enabled {
+		securityMiddleware = &middleware.SecurityMiddleware{}
+	}
+
+	// Initialize metrics collector for the test handler
+	reg := prometheus.NewRegistry()
+	collector := metrics.NewCollector(reg)
+
+	gw := &Gateway{
+		cfg:          g.cfg,
+		router:       m,
+		balancer:     b,
+		logger:       logger,
+		adapters:     adapters,
+		providerMap:  providerMap,
+		tp:           tp,
+		redisClient:  redisClient,
+		semanticRouter: g.semanticRouter,
+		semanticCache:  g.semanticCache,
+		costTracker:    g.costTracker,
+		metrics:        collector,
+		auditStore:     g.auditStore,
+		promptManager:  g.promptManager,
+		webhookNotifier: g.webhookNotifier,
+		pluginManager:   g.pluginManager,
+	}
+
+	r := chi.NewRouter()
+	r.Use(chimw.RequestID)
+	r.Use(chimw.RealIP)
+	r.Use(middleware.NewRecovery(logger).Middleware)
+	if gw.auditStore != nil {
+		r.Use(middleware.NewAudit(logger, gw.auditStore).Middleware)
+	}
+		authMiddleware := middleware.NewAuth(g.cfg.Auth.Enabled, buildKeyMap(g.cfg.Auth.Keys), buildRoleMap(g.cfg.Auth.Keys), logger)
+	if g.userStore != nil {
+		authMiddleware.SetUserStore(g.userStore)
+	}
+	r.Use(authMiddleware.Middleware)
+	r.Use(middleware.NewAdminPermission().Middleware)
+	if securityMiddleware != nil {
+		r.Use(securityMiddleware.Middleware)
+	}
+	if semanticMiddleware != nil {
+		r.Use(semanticMiddleware.Middleware)
+	}
+	if costMiddleware != nil {
+		r.Use(costMiddleware.Middleware)
+	}
+
+	r.Get("/admin/health", gw.handleHealth)
+	r.Get("/admin/status", gw.handleStatus)
+	r.Get("/admin/upstreams", gw.handleListUpstreams)
+	r.Get("/admin/routes", gw.handleListRoutes)
+	r.Get("/admin/keys", gw.handleListKeys)
+	r.Post("/admin/routes", gw.handleReloadRoutes)
+	r.Post("/admin/upstreams", gw.handleReloadUpstreams)
+	r.Post("/admin/keys", gw.handleAddKey)
+	r.Delete("/admin/keys/{key}", gw.handleDeleteKey)
+	r.Post("/admin/upstreams/single", gw.handleAddUpstream)
+	r.Delete("/admin/upstreams/{name}", gw.handleDeleteUpstream)
+	r.Post("/admin/routes/single", gw.handleAddRoute)
+	r.Delete("/admin/routes/{id}", gw.handleDeleteRoute)
+	r.Get("/admin/config", gw.handleGetConfig)
+	r.Put("/admin/config", gw.handleUpdateConfig)
+	r.Get("/admin/audit-logs", gw.handleGetAuditLogs)
+	r.Get("/admin/cost-stats", gw.handleGetCostStats)
+	r.Get("/admin/config/versions", gw.handleConfigVersions)
+	r.Post("/admin/config/rollback/{version}", gw.handleConfigRollback)
+	r.Get("/admin/health/history", gw.handleHealthHistory)
+	r.Get("/admin/plugins", gw.handleListPlugins)
+	r.Post("/admin/plugins", gw.handleReloadPlugins)
+	r.Get("/admin/webhook", gw.handleGetWebhookConfig)
+	r.Put("/admin/webhook", gw.handleUpdateWebhookConfig)
+	r.Get("/admin/prompts", gw.handleListPrompts)
+	r.Post("/admin/prompts", gw.handleSavePrompt)
+	r.Get("/admin/prompts/{id}", gw.handleGetPrompt)
+	r.Delete("/admin/prompts/{id}", gw.handleDeletePrompt)
+	r.Post("/admin/prompts/{id}/versions", gw.handleAddPromptVersion)
+		r.Post("/admin/login", gw.handleLogin)
+	r.Get("/admin/users", gw.handleListUsers)
+	r.Post("/admin/users", gw.handleCreateUser)
+	r.Delete("/admin/users/{username}", gw.handleDeleteUser)
+	r.Put("/admin/users/{username}/role", gw.handleUpdateUserRole)
+	r.Post("/admin/keys/{key}/rotate", gw.handleRotateKey)
+	r.Get("/admin/security/policies", gw.handleGetSecurityPolicies)
+	r.Put("/admin/security/policies", gw.handleUpdateSecurityPolicies)
+
+	r.Post("/v1/chat/completions", gw.handleChatCompletion)
+	r.Post("/v1/embeddings", gw.handleEmbeddings)
+	r.Get("/openapi.yaml", gw.handleOpenAPISpec)
+	r.Get("/metrics", gw.handleMetrics)
+
+	return r
+}
+
 func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -777,4 +975,44 @@ func initLogger(cfg config.LogConfig) *slog.Logger {
 	}
 	return slog.New(handler)
 }
+
+
+
+func (g *Gateway) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if g.metrics != nil {
+		g.metrics.Handler().ServeHTTP(w, r)
+	} else {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("# No metrics collector configured\n"))
+	}
+}
+
+
+// messagesToPlugin converts openai.Message slice to plugin-friendly []map[string]interface{}.
+func messagesToPlugin(msgs []openai.Message) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(msgs))
+	for i, m := range msgs {
+		result[i] = map[string]interface{}{
+			"role":    m.Role,
+			"content": m.Content,
+		}
+	}
+	return result
+}
+
+// pluginToMessages converts plugin-friendly messages back to openai.Message slice.
+func pluginToMessages(msgs []map[string]interface{}) []openai.Message {
+	result := make([]openai.Message, len(msgs))
+	for i, m := range msgs {
+		role, _ := m["role"].(string)
+		content, _ := m["content"].(string)
+		result[i] = openai.Message{Role: role, Content: content}
+	}
+	return result
+}
+
+
+
+
+
 

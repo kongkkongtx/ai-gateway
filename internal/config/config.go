@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"fmt"
@@ -31,6 +31,7 @@ type Config struct {
 	Prompt    prompt.Config     `yaml:"prompt_templates"`
 	Webhook   webhook.Config    `yaml:"webhook"`
 	Plugin    plugin.Config     `yaml:"plugins"`
+	Audit     AuditConfig        `yaml:"audit"`
 	Log       LogConfig          `yaml:"log"`
 }
 
@@ -48,9 +49,12 @@ type AuthConfig struct {
 }
 
 type APIKey struct {
-	Key   string   `yaml:"key"`
-	Name  string   `yaml:"name"`
-	Roles []string `yaml:"roles"`
+	Key         string   `yaml:"key" json:"key"`
+	Name        string   `yaml:"name" json:"name"`
+	Roles       []string `yaml:"roles" json:"roles,omitempty"`
+	Team        string   `yaml:"team,omitempty" json:"team,omitempty"`
+	ExpiresAt   string   `yaml:"expires_at,omitempty" json:"expires_at,omitempty"`
+	LastRotated string   `yaml:"last_rotated,omitempty" json:"last_rotated,omitempty"`
 }
 
 type RedisConfig struct {
@@ -96,6 +100,14 @@ type RateLimitRule struct {
 	Key    string        `yaml:"key"`
 	Limit  int           `yaml:"limit"`
 	Window time.Duration `yaml:"window"`
+}
+
+
+// AuditConfig controls audit log persistence.
+type AuditConfig struct {
+	Enabled    bool   `yaml:"enabled" json:"enabled"`
+	FilePath   string `yaml:"file_path,omitempty" json:"file_path,omitempty"`
+	BufferSize int    `yaml:"buffer_size,omitempty" json:"buffer_size,omitempty"`
 }
 
 type LogConfig struct {
@@ -210,3 +222,4 @@ func validate(cfg *Config) error {
 	}
 	return nil
 }
+

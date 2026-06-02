@@ -1,13 +1,14 @@
-import Sidebar from './Sidebar'
+﻿import Sidebar from './Sidebar'
 
 interface LayoutProps {
   children: React.ReactNode
+  onLogout?: () => void
 }
 
-export default function Layout({ children }: LayoutProps) {
+export default function Layout({ children, onLogout }: LayoutProps) {
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      <Sidebar onLogout={onLogout} />
       <main className="flex-1 overflow-y-auto bg-surface-950">
         <div className="max-w-7xl mx-auto px-8 py-8">
           {children}

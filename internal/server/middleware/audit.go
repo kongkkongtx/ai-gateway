@@ -39,11 +39,11 @@ func (rw *responseWriter) Write(b []byte) (int, error) {
 // Audit logs structured request/response information for every request.
 type Audit struct {
 	logger *slog.Logger
-	store  *AuditStore
+	store  AuditStore
 }
 
 // NewAudit creates an Audit middleware instance.
-func NewAudit(logger *slog.Logger, store *AuditStore) *Audit {
+func NewAudit(logger *slog.Logger, store AuditStore) *Audit {
 	return &Audit{logger: logger, store: store}
 }
 

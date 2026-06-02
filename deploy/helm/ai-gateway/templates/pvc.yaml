@@ -1,0 +1,17 @@
+﻿{{- if .Values.gateway.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ai-gateway.fullname" . }}-data
+  labels:
+    {{- include "ai-gateway.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.gateway.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.gateway.persistence.size }}
+  {{- if .Values.gateway.persistence.storageClass }}
+  storageClassName: {{ .Values.gateway.persistence.storageClass }}
+  {{- end }}
+{{- end }}

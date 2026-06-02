@@ -1,4 +1,4 @@
-package cost
+﻿package cost
 
 import (
 	"context"
@@ -202,4 +202,13 @@ func (t *Tracker) LoadFromRedis(ctx context.Context, redisCli *cache.Client) err
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return json.Unmarshal(data, &t.usage)
+}
+
+// TeamStat holds aggregated usage for a team.
+type TeamStat struct {
+	Team         string `json:"team"`
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	TotalTokens  int    `json:"total_tokens"`
+	KeyCount     int    `json:"key_count"`
 }

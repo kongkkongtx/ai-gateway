@@ -1,0 +1,17 @@
+﻿apiVersion: v2
+name: ai-gateway
+description: Enterprise AI Governance Gateway - unified access, security, cost control, and observability for LLM providers
+type: application
+version: 2.1.0
+appVersion: "2.1.0"
+keywords:
+  - ai
+  - gateway
+  - llm
+  - openai
+  - proxy
+home: https://github.com/yushi/ai-gateway
+sources:
+  - https://github.com/yushi/ai-gateway
+maintainers:
+  - name: AI Gateway Team

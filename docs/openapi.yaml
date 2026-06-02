@@ -363,6 +363,87 @@ paths:
                 items:
                   $ref: "#/components/schemas/CostStat"
 
+
+  /admin/config/versions:
+    get:
+      summary: List config version history
+      operationId: listConfigVersions
+      responses:
+        "200":
+          description: List of config versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    version:
+                      type: integer
+                    timestamp:
+                      type: string
+                      format: date-time
+                    path:
+                      type: string
+
+  /admin/config/rollback/{version}:
+    post:
+      summary: Rollback config to a specific version
+      operationId: configRollback
+      parameters:
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Config rolled back successfully
+        "404":
+          description: Version not found
+
+  /admin/plugins:
+    get:
+      summary: List loaded plugins
+      operationId: listPlugins
+      responses:
+        "200":
+          description: Plugin list with counts by type
+    post:
+      summary: Reload plugin configuration
+      operationId: reloadPlugins
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plugins:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      type:
+                        type: string
+                        enum: [provider, security, router]
+                      endpoint:
+                        type: string
+                      enabled:
+                        type: boolean
+      responses:
+        "200":
+          description: Plugins reloaded successfully
+
+  /admin/config/health:
+    get:
+      summary: Get upstream health history
+      operationId: getHealthHistory
+      responses:
+        "200":
+          description: Upstream health status history
+
   /admin/metrics:
     get:
       summary: Prometheus Metrics

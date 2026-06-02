@@ -1,4 +1,4 @@
-package server
+﻿package server
 
 import (
 	"encoding/json"
@@ -11,7 +11,10 @@ import (
 	"github.com/yushi/ai-gateway/internal/plugin"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/yushi/ai-gateway/internal/server/middleware"
+	"github.com/yushi/ai-gateway/internal/security"
 	"github.com/yushi/ai-gateway/internal/config"
+	"github.com/yushi/ai-gateway/internal/user"
 	"github.com/yushi/ai-gateway/internal/provider/openai"
 )
 
@@ -118,7 +121,7 @@ func (g *Gateway) handleReloadRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 	g.router.Update(routes)
 	g.cfg.Routes = routes
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist route config", "error", err)
 	}
 	g.logger.Info("routes reloaded", "count", len(routes))
@@ -151,7 +154,7 @@ func (g *Gateway) handleReloadUpstreams(w http.ResponseWriter, r *http.Request) 
 		g.providerMap[u.Name] = u.Provider
 	}
 	g.cfg.Upstream = upstreamCfgs
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist upstream config", "error", err)
 	}
 	g.balancer.StartHealthChecks(r.Context(), 30*time.Second, 5*time.Second)
@@ -182,7 +185,7 @@ func (g *Gateway) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	g.cfg.Auth.Keys = append(g.cfg.Auth.Keys, config.APIKey{
 		Key: keyReq.Key, Name: keyReq.Name, Roles: keyReq.Roles,
 	})
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist key config", "error", err)
 	}
 	g.logger.Info("API key added", "name", keyReq.Name)
@@ -199,7 +202,7 @@ func (g *Gateway) handleDeleteKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "API key not found")
 		return
 	}
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist key config after delete", "error", err)
 	}
 	g.logger.Info("API key deleted")
@@ -235,7 +238,7 @@ func (g *Gateway) handleAddUpstream(w http.ResponseWriter, r *http.Request) {
 	g.providerMap[u.Name] = u.Provider
 	g.cfg.UpsertUpstream(u)
 
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist upstream config", "error", err)
 	}
 	g.balancer.StartHealthChecks(r.Context(), 30*time.Second, 5*time.Second)
@@ -268,7 +271,7 @@ func (g *Gateway) handleDeleteUpstream(w http.ResponseWriter, r *http.Request) {
 	delete(g.adapters, name)
 	delete(g.providerMap, name)
 	g.cfg.RemoveUpstream(name)
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist upstream config after delete", "error", err)
 	}
 	g.logger.Info("upstream deleted", "name", name)
@@ -301,7 +304,7 @@ func (g *Gateway) handleAddRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	g.cfg.UpsertRoute(rt)
 	g.router.Update(g.cfg.Routes)
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist route config", "error", err)
 	}
 	g.logger.Info("route saved", "id", rt.ID)
@@ -319,7 +322,7 @@ func (g *Gateway) handleDeleteRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	g.router.Update(g.cfg.Routes)
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist route config after delete", "error", err)
 	}
 	g.logger.Info("route deleted", "id", id)
@@ -710,7 +713,7 @@ func (g *Gateway) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		g.cfg.Cost.DegradeConfig.AlertThreshold = body.Cost.DegradeConfig.AlertThreshold
 	}
 
-	if err := config.Save(g.cfg, g.configPath); err != nil {
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "API update"); err != nil {
 		g.logger.Warn("failed to persist config", "error", err)
 	}
 	g.logger.Info("gateway config updated")
@@ -743,12 +746,48 @@ func (g *Gateway) handleGetCostStats(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, []interface{}{})
 		return
 	}
-	since := time.Now().Add(-24 * time.Hour)
+	// Parse optional time range parameter (default: 24h)
+	duration := 24 * time.Hour
+	if d := r.URL.Query().Get("since"); d != "" {
+		if parsed, err := time.ParseDuration(d); err == nil && parsed > 0 {
+			duration = parsed
+		}
+	}
+	since := time.Now().Add(-duration)
 	stats := g.costTracker.GetStats(since)
 	writeJSON(w, http.StatusOK, stats)
 }
 
 
+
+func (g *Gateway) handleHealthHistory(w http.ResponseWriter, r *http.Request) {
+	upstreams := g.balancer.Upstreams()
+	type item struct {
+		Name     string `json:"name"`
+		Endpoint string `json:"endpoint"`
+		Provider string `json:"provider"`
+		Healthy  bool   `json:"healthy"`
+		Conns    int64  `json:"active_conns"`
+	}
+	result := make([]item, 0, len(upstreams))
+	for _, u := range upstreams {
+		result = append(result, item{
+			Name: u.Name, Endpoint: u.Endpoint, Provider: u.Provider,
+			Healthy: u.Healthy.Load(), Conns: u.Conns(),
+		})
+	}
+	healthyCount := 0
+	for _, u := range result {
+		if u.Healthy {
+			healthyCount++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"upstreams":     result,
+		"total":         len(result),
+		"healthy_count": healthyCount,
+	})
+}
 
 func (g *Gateway) handleListPrompts(w http.ResponseWriter, r *http.Request) {
 	list := g.promptManager.List()
@@ -864,8 +903,257 @@ func (g *Gateway) handleReloadPlugins(w http.ResponseWriter, r *http.Request) {
 }
 
 
+func (g *Gateway) handleConfigVersions(w http.ResponseWriter, r *http.Request) {
+	versions, err := config.ListVersions(g.configPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to list config versions: "+err.Error())
+		return
+	}
+	if versions == nil {
+		versions = []config.ConfigVersion{}
+	}
+	writeJSON(w, http.StatusOK, versions)
+}
+
+func (g *Gateway) handleConfigRollback(w http.ResponseWriter, r *http.Request) {
+	versionStr := chi.URLParam(r, "version")
+	version, err := strconv.Atoi(versionStr)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid version number")
+		return
+	}
+
+	cfg, err := config.Rollback(g.configPath, version)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Rollback failed: "+err.Error())
+		return
+	}
+
+	// Reload gateway config
+	g.cfg = cfg
+	g.logger.Info("config rolled back", "version", version)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":  "ok",
+		"version": version,
+	})
+}
+
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
 }
+
+
+
+
+
+
+// ---- User Authentication ----
+
+func (g *Gateway) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if g.userStore == nil {
+		writeError(w, http.StatusServiceUnavailable, "User authentication is not configured")
+		return
+	}
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	u, err := g.userStore.Authenticate(creds.Username, creds.Password)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+	token, err := user.GenerateToken(u)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate token")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"token":    token,
+		"username": u.Username,
+		"role":     u.Role,
+		"team":     u.Team,
+	})
+}
+
+// ---- User Management ----
+
+func (g *Gateway) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	if g.userStore == nil {
+		writeJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+	type userResp struct {
+		Username  string `json:"username"`
+		Role      string `json:"role"`
+		Team      string `json:"team"`
+		CreatedAt string `json:"created_at"`
+	}
+	users := g.userStore.List()
+	result := make([]userResp, 0, len(users))
+	for _, u := range users {
+		result = append(result, userResp{
+			Username: u.Username, Role: u.Role, Team: u.Team,
+			CreatedAt: u.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (g *Gateway) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	if g.userStore == nil {
+		writeError(w, http.StatusServiceUnavailable, "User store not available")
+		return
+	}
+	var body struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+		Team     string `json:"team,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if body.Username == "" {
+		writeError(w, http.StatusBadRequest, "Username is required")
+		return
+	}
+	if body.Password == "" {
+		writeError(w, http.StatusBadRequest, "Password is required")
+		return
+	}
+	if body.Role == "" {
+		body.Role = "viewer"
+	}
+	if body.Role != "admin" && body.Role != "editor" && body.Role != "viewer" {
+		writeError(w, http.StatusBadRequest, "Invalid role: must be admin, editor, or viewer")
+		return
+	}
+	u, err := g.userStore.Create(body.Username, body.Password, body.Role, body.Team)
+	if err != nil {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{
+		"status": "ok", "username": u.Username,
+	})
+}
+
+func (g *Gateway) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	if g.userStore == nil {
+		writeError(w, http.StatusServiceUnavailable, "User store not available")
+		return
+	}
+	username := chi.URLParam(r, "username")
+	requester, _ := r.Context().Value(middleware.APIKeyNameContextKey).(string)
+	if err := g.userStore.Delete(username, requester); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (g *Gateway) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
+	if g.userStore == nil {
+		writeError(w, http.StatusServiceUnavailable, "User store not available")
+		return
+	}
+	username := chi.URLParam(r, "username")
+	var body struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if body.Role != "admin" && body.Role != "editor" && body.Role != "viewer" {
+		writeError(w, http.StatusBadRequest, "Invalid role")
+		return
+	}
+	if err := g.userStore.UpdateRole(username, body.Role); err != nil {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ---- API Key Lifecycle ----
+
+func (g *Gateway) handleRotateKey(w http.ResponseWriter, r *http.Request) {
+	keyName := chi.URLParam(r, "key")
+	// Find the key
+	found := false
+	for i, k := range g.cfg.Auth.Keys {
+		if k.Key == keyName {
+			newKey, err := user.GenerateAPIKey()
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "Failed to generate new key")
+				return
+			}
+			g.cfg.Auth.Keys[i].Key = newKey
+			g.cfg.Auth.Keys[i].LastRotated = time.Now().Format(time.RFC3339)
+			found = true
+			if _, err := config.SaveVersioned(g.cfg, g.configPath, "Key rotated: "+k.Name); err != nil {
+				g.logger.Warn("failed to persist key rotation", "error", err)
+			}
+			writeJSON(w, http.StatusOK, map[string]string{
+				"status":  "ok",
+				"old_key": keyName,
+				"new_key": newKey,
+			})
+			return
+		}
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "Key not found")
+	}
+}
+
+// ---- Security Policy Center ----
+
+func (g *Gateway) handleGetSecurityPolicies(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"prompt_injection": g.cfg.Security.PromptInjection,
+		"pii":              g.cfg.Security.PII,
+		"ip_allowlist":     g.cfg.Security.IPAllowlist,
+		"ip_blocklist":     g.cfg.Security.IPBlocklist,
+	})
+}
+
+func (g *Gateway) handleUpdateSecurityPolicies(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		PromptInjection *security.PromptInjectionConfig `json:"prompt_injection,omitempty"`
+		PII             *security.PIIConfig             `json:"pii,omitempty"`
+		IPAllowlist     *[]string                       `json:"ip_allowlist,omitempty"`
+		IPBlocklist     *[]string                       `json:"ip_blocklist,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if body.PromptInjection != nil {
+		g.cfg.Security.PromptInjection = *body.PromptInjection
+	}
+	if body.PII != nil {
+		g.cfg.Security.PII = *body.PII
+	}
+	if body.IPAllowlist != nil {
+		g.cfg.Security.IPAllowlist = *body.IPAllowlist
+	}
+	if body.IPBlocklist != nil {
+		g.cfg.Security.IPBlocklist = *body.IPBlocklist
+	}
+	if _, err := config.SaveVersioned(g.cfg, g.configPath, "Security policies updated"); err != nil {
+		g.logger.Warn("failed to persist security policies", "error", err)
+	}
+	g.logger.Info("security policies updated")
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+

@@ -3,13 +3,18 @@ import type { GatewayStatus, HealthResponse, ChatRequest, ChatResponse, Upstream
 const BASE = ''
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const isLogin = url.includes('/admin/login')
+  const token = !isLogin ? localStorage.getItem('ai-gateway-token') : null
+  const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) { authHeaders['Authorization'] = 'Bearer ' + token }
+  if (init?.headers) { Object.assign(authHeaders, init.headers) }
   const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: authHeaders,
     ...init,
   })
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`HTTP ${res.status}: ${body}`)
+    throw new Error('HTTP ' + res.status + ': ' + body)
   }
   return res.json()
 }
@@ -100,6 +105,10 @@ export interface RouteConfig {
 export interface ApiKeyConfig {
   key: string
   name: string
+  roles?: string[]
+  team?: string
+  expires_at?: string
+  last_rotated?: string
 }
 
 // Management API calls
@@ -129,10 +138,10 @@ export async function getApiKeys(): Promise<ApiKeyConfig[]> {
   return fetchJson('/admin/keys')
 }
 
-export async function addApiKey(key: string, name: string, roles?: string[]): Promise<{ status: string }> {
+export async function addApiKey(key: string, name: string, roles?: string[], team?: string, expiresAt?: string): Promise<{ status: string }> {
   return fetchJson('/admin/keys', {
     method: 'POST',
-    body: JSON.stringify({ key, name, roles }),
+    body: JSON.stringify({ key, name, roles, team, expires_at: expiresAt }),
   })
 }
 
@@ -319,3 +328,90 @@ export async function updateGatewayConfig(config: Partial<GatewayConfig>): Promi
 }
 
 
+
+
+// ---- Auth API ----
+export interface LoginResponse {
+  token: string
+  username: string
+  role: string
+  team: string
+}
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  return fetchJson('/admin/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+// ---- User Management ----
+export interface UserInfo {
+  username: string
+  role: string
+  team: string
+  created_at: string
+}
+
+export async function getUsers(): Promise<UserInfo[]> {
+  return fetchJson('/admin/users')
+}
+
+export async function createUser(username: string, password: string, role: string, team?: string): Promise<{ status: string; username: string }> {
+  return fetchJson('/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, role, team }),
+  })
+}
+
+export async function deleteUser(username: string): Promise<{ status: string }> {
+  return fetchJson('/admin/users/' + encodeURIComponent(username), {
+    method: 'DELETE',
+  })
+}
+
+export async function updateUserRole(username: string, role: string): Promise<{ status: string }> {
+  return fetchJson('/admin/users/' + encodeURIComponent(username) + '/role', {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+}
+
+// ---- API Key Lifecycle ----
+export async function rotateApiKey(key: string): Promise<{ status: string; old_key: string; new_key: string }> {
+  return fetchJson('/admin/keys/' + encodeURIComponent(key) + '/rotate', {
+    method: 'POST',
+  })
+}
+
+// ---- Security Policies ----
+export interface SecurityPolicies {
+  prompt_injection: { enabled: boolean; action: string; risk_threshold: string; keywords?: string[] }
+  pii: { enabled: boolean; action: string; types?: string[] }
+  ip_allowlist?: string[]
+  ip_blocklist?: string[]
+}
+
+export async function getSecurityPolicies(): Promise<SecurityPolicies> {
+  return fetchJson('/admin/security/policies')
+}
+
+export async function updateSecurityPolicies(policies: Partial<SecurityPolicies>): Promise<{ status: string }> {
+  return fetchJson('/admin/security/policies', {
+    method: 'PUT',
+    body: JSON.stringify(policies),
+  })
+}
+
+// ---- Team Cost Stats ----
+export interface TeamStat {
+  team: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  key_count: number
+}
+
+export async function getTeamCostStats(): Promise<TeamStat[]> {
+  return fetchJson('/admin/cost-stats?by=team')
+}
