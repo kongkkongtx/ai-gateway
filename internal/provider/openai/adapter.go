@@ -50,10 +50,60 @@ type ChatCompletionRequest struct {
 	User        string    `json:"user,omitempty"`
 }
 
+// ContentPart represents an element of a multimodal content array.
+// When a message contains images or audio, Content is an array of ContentPart
+// instead of a plain string.
+type ContentPart struct {
+	Type       string      `json:"type"`                 // "text" | "image_url" | "input_audio"
+	Text       string      `json:"text,omitempty"`
+	ImageURL   *ImageURL   `json:"image_url,omitempty"`
+	InputAudio *InputAudio `json:"input_audio,omitempty"`
+}
+
+// ImageURL represents an image in a multimodal message.
+type ImageURL struct {
+	URL    string `json:"url"`              // HTTP URL or data:image/...;base64,...
+	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
+}
+
+// InputAudio represents audio input in a multimodal message.
+type InputAudio struct {
+	Data   string `json:"data"`   // base64 encoded audio
+	Format string `json:"format"` // "wav" | "mp3" | "flac" | "opus" | "pcm16"
+}
+
 // Message represents a single turn in a chat conversation.
+// Content can be a plain string (for text-only messages) or a []ContentPart
+// (for multimodal messages containing images or audio).
 type Message struct {
 	Role    string `json:"role"`    // "system", "user", or "assistant"
-	Content string `json:"content"`
+	Content any    `json:"content"` // string or []ContentPart
+}
+
+// ExtractText extracts the first text content from a Message's Content field.
+// It handles both plain string and content parts array formats.
+func ExtractText(content any) string {
+	switch v := content.(type) {
+	case string:
+		return v
+	case []ContentPart:
+		for _, p := range v {
+			if p.Type == "text" && p.Text != "" {
+				return p.Text
+			}
+		}
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				if t, ok2 := m["type"].(string); ok2 && t == "text" {
+					if text, ok3 := m["text"].(string); ok3 {
+						return text
+					}
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // ChatCompletionResponse mirrors the OpenAI chat completion response schema.

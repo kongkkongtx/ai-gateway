@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/yushi/ai-gateway/internal/config"
-	"github.com/yushi/ai-gateway/internal/server"
+	"github.com/kongkkongtx/ai-gateway/internal/config"
+	"github.com/kongkkongtx/ai-gateway/internal/server"
 )
 
 func testConfig() *config.Config {

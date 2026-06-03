@@ -18,25 +18,29 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/yushi/ai-gateway/internal/balancer"
-	"github.com/yushi/ai-gateway/internal/metrics"
-	"github.com/yushi/ai-gateway/internal/cache"
-	"github.com/yushi/ai-gateway/internal/cost"
-	"github.com/yushi/ai-gateway/internal/prompt"
-	"github.com/yushi/ai-gateway/internal/webhook"
-	"github.com/yushi/ai-gateway/internal/plugin"
-	"github.com/yushi/ai-gateway/internal/config"
-	"github.com/yushi/ai-gateway/internal/provider"
-	"github.com/yushi/ai-gateway/internal/provider/anthropic"
-	"github.com/yushi/ai-gateway/internal/provider/azure"
-	"github.com/yushi/ai-gateway/internal/provider/google"
-	"github.com/yushi/ai-gateway/internal/provider/openai"
-	"github.com/yushi/ai-gateway/internal/security"
-	"github.com/yushi/ai-gateway/internal/router"
-	"github.com/yushi/ai-gateway/internal/semantic"
-	"github.com/yushi/ai-gateway/internal/server/middleware"
-	"github.com/yushi/ai-gateway/internal/tracing"
-	"github.com/yushi/ai-gateway/internal/user"
+	"github.com/kongkkongtx/ai-gateway/internal/balancer"
+	"github.com/kongkkongtx/ai-gateway/internal/metrics"
+	"github.com/kongkkongtx/ai-gateway/internal/cache"
+	"github.com/kongkkongtx/ai-gateway/internal/cost"
+	"github.com/kongkkongtx/ai-gateway/internal/prompt"
+	"github.com/kongkkongtx/ai-gateway/internal/webhook"
+	"github.com/kongkkongtx/ai-gateway/internal/plugin"
+	"github.com/kongkkongtx/ai-gateway/internal/config"
+	"github.com/kongkkongtx/ai-gateway/internal/provider"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/anthropic"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/azure"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/google"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/security"
+	"github.com/kongkkongtx/ai-gateway/internal/router"
+	"github.com/kongkkongtx/ai-gateway/internal/semantic"
+	"github.com/kongkkongtx/ai-gateway/internal/server/middleware"
+	"github.com/kongkkongtx/ai-gateway/internal/tracing"
+	"github.com/kongkkongtx/ai-gateway/internal/user"
+	"github.com/kongkkongtx/ai-gateway/internal/experiment"
+	"github.com/kongkkongtx/ai-gateway/internal/evaluation"
+	"github.com/kongkkongtx/ai-gateway/internal/mcp"
+	"github.com/kongkkongtx/ai-gateway/internal/rag"
 )
 
 type Gateway struct {
@@ -59,7 +63,13 @@ type Gateway struct {
 	promptManager  *prompt.Manager
 	webhookNotifier *webhook.Notifier
 	pluginManager   *plugin.Manager
-	userStore       *user.Store
+	userStore        *user.Store
+	experimentEngine  *experiment.Engine
+	evaluationRunner  *evaluation.Runner
+	prewarmer           *semantic.Prewarmer
+	mcpHub              *mcp.Hub
+	ragStore           rag.VectorStore
+	ragEmbedder        rag.Embedder
 }
 
 func New(cfg *config.Config, configPath string) (*Gateway, error) {
@@ -125,6 +135,7 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	// Initialize semantic router
 	var semRouter *semantic.Router
 	var semCache *semantic.Cache
+	var prewarmer *semantic.Prewarmer
 	if cfg.Semantic.Enabled || cfg.SemanticCache.Enabled {
 		if embedAdapter, ok := adapters[cfg.Semantic.Provider]; ok {
 			oaAdapter, ok2 := embedAdapter.(*openai.Adapter)
@@ -144,6 +155,20 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 		if semRouter == nil && cfg.Semantic.Enabled {
 			logger.Warn("semantic router enabled but no embedding provider configured",
 				"provider", cfg.Semantic.Provider)
+		}
+
+		// Initialize cache prewarmer
+		if cfg.SemanticCache.Prewarm.Enabled && semCache != nil {
+			var pwEmbedder semantic.Embedder
+			if semCache != nil {
+				pwEmbedder = semCache.Embedder()
+			}
+			if pwEmbedder != nil {
+				prewarmer = semantic.NewPrewarmer(semCache, cfg.SemanticCache.Prewarm, pwEmbedder, logger)
+				logger.Info("cache prewarmer initialized", "seed_queries", len(cfg.SemanticCache.Prewarm.SeedQueries))
+			} else {
+				logger.Warn("cache prewarmer disabled: cache has no embedder")
+			}
 		}
 	}
 
@@ -166,6 +191,25 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 			"cache", semCache != nil)
 	}
 
+	// Initialize RAG middleware
+	// Always initialize RAG store for admin API
+	var ragStore rag.VectorStore = rag.NewMemoryStore()
+	var ragEmbedder rag.Embedder
+	var ragMiddleware *middleware.RAGMiddleware
+	if cfg.RAG.Enabled {
+		if embProvider, ok := adapters[cfg.RAG.EmbeddingProvider]; ok {
+			if oaAdapter, ok2 := embProvider.(*openai.Adapter); ok2 {
+				ragEmbedder = rag.NewEmbeddingAdapter(oaAdapter, cfg.RAG.EmbeddingModel)
+				ragMiddleware = middleware.NewRAG(cfg.RAG, ragStore, ragEmbedder, logger)
+				logger.Info("rag middleware initialized", "kb", len(cfg.RAG.KnowledgeBases), "topK", cfg.RAG.TopK)
+			} else {
+				logger.Warn("rag: embedding provider is not an OpenAI adapter")
+			}
+		} else {
+			logger.Warn("rag: embedding provider not found, RAG disabled", "provider", cfg.RAG.EmbeddingProvider)
+		}
+	}
+
 
 	// Initialize prompt template manager
 	promptManager := prompt.NewManager()
@@ -181,6 +225,28 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	pluginManager := plugin.NewManager(cfg.Plugin, logger)
 	if len(cfg.Plugin.Plugins) > 0 {
 		logger.Info("plugin manager initialized", "count", len(cfg.Plugin.Plugins))
+	}
+
+	// Initialize experiment engine
+	var experimentEngine *experiment.Engine
+	if cfg.Experiment.Enabled {
+		experimentEngine = experiment.NewEngine(cfg.Experiment, logger)
+		logger.Info("experiment engine initialized", "experiments", len(cfg.Experiment.Experiments))
+	}
+
+	// Initialize evaluation runner
+	var evaluationRunner *evaluation.Runner
+	if cfg.Evaluation.Enabled {
+		evaluationRunner = evaluation.NewRunner(cfg.Evaluation, adapters, nil, logger, webhookNotifier)
+		logger.Info("evaluation runner initialized", "suites", len(cfg.Evaluation.Suites))
+	}
+
+	// Initialize MCP Hub
+	var mcpHub *mcp.Hub
+	if cfg.MCP.Enabled {
+		mcpHub = mcp.NewHub(cfg.MCP, logger)
+		mcpHub.ConnectAll()
+		logger.Info("mcp hub initialized", "servers", len(cfg.MCP.Servers))
 	}
 
 	// Initialize audit store with file persistence
@@ -222,11 +288,17 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 		redisClient: redisClient,
 		semanticRouter: semRouter,
 		semanticCache: semCache,
+		prewarmer:      prewarmer,
 		costTracker: costTracker,
 		auditStore: auditStore,
-		promptManager: promptManager,
-		webhookNotifier: webhookNotifier,
-		pluginManager:   pluginManager,
+		promptManager:    promptManager,
+		webhookNotifier:  webhookNotifier,
+		pluginManager:    pluginManager,
+		experimentEngine: experimentEngine,
+		evaluationRunner:   evaluationRunner,
+		mcpHub:             mcpHub,
+		ragStore:           ragStore,
+		ragEmbedder:        ragEmbedder,
 		userStore: userStore,
 	}
 
@@ -280,6 +352,9 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	if semanticMiddleware != nil {
 		r.Use(semanticMiddleware.Middleware)
 	}
+	if ragMiddleware != nil {
+		r.Use(ragMiddleware.Middleware)
+	}
 	if costMiddleware != nil {
 		r.Use(costMiddleware.Middleware)
 	}
@@ -324,10 +399,49 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	r.Post("/admin/keys/{key}/rotate", gw.handleRotateKey)
 	r.Get("/admin/security/policies", gw.handleGetSecurityPolicies)
 	r.Put("/admin/security/policies", gw.handleUpdateSecurityPolicies)
+	r.Get("/admin/experiments", gw.handleListExperiments)
+	r.Post("/admin/experiments", gw.handleCreateExperiment)
+	r.Get("/admin/experiments/{id}", gw.handleGetExperiment)
+	r.Put("/admin/experiments/{id}", gw.handleUpdateExperiment)
+	r.Delete("/admin/experiments/{id}", gw.handleDeleteExperiment)
+	r.Get("/admin/experiments/{id}/results", gw.handleExperimentResults)
+	r.Post("/admin/experiments/{id}/start", gw.handleStartExperiment)
+	r.Post("/admin/experiments/{id}/stop", gw.handleStopExperiment)
+
+	r.Get("/admin/evaluations", gw.handleListEvalSuites)
+	r.Post("/admin/evaluations", gw.handleCreateEvalSuite)
+	r.Get("/admin/evaluations/{id}", gw.handleGetEvalSuite)
+	r.Delete("/admin/evaluations/{id}", gw.handleDeleteEvalSuite)
+	r.Post("/admin/evaluations/{id}/run", gw.handleRunEvaluation)
+	r.Get("/admin/evaluations/{id}/runs", gw.handleListEvalRuns)
+	r.Get("/admin/evaluations/{id}/runs/{runId}", gw.handleGetEvalRun)
+	r.Post("/admin/evaluations/{id}/runs/{runId}/cancel", gw.handleCancelEvalRun)
+	r.Post("/admin/mcp/servers", gw.handleAddMCPServer)
+	r.Get("/admin/mcp/servers", gw.handleListMCPServers)
+	r.Get("/admin/mcp/servers/{name}", gw.handleGetMCPServer)
+	r.Put("/admin/mcp/servers/{name}", gw.handleUpdateMCPServer)
+	r.Delete("/admin/mcp/servers/{name}", gw.handleDeleteMCPServer)
+		r.Get("/admin/cache/stats", gw.handleCacheStats)
+	r.Post("/admin/cache/prewarm", gw.handleCachePrewarm)
+	r.Get("/admin/cache/prewarm/stats", gw.handleCachePrewarmStats)
+r.Get("/admin/mcp/tools", gw.handleListMCPTools)
+	r.Post("/admin/mcp/servers/{name}/reconnect", gw.handleReconnectMCPServer)
+	r.Post("/admin/mcp/reload", gw.handleReloadMCP)
+	r.Get("/admin/rag/knowledge-bases", gw.handleListKnowledgeBases)
+	r.Post("/admin/rag/knowledge-bases", gw.handleCreateKnowledgeBase)
+	r.Get("/admin/rag/knowledge-bases/{id}", gw.handleGetKnowledgeBase)
+	r.Delete("/admin/rag/knowledge-bases/{id}", gw.handleDeleteKnowledgeBase)
+	r.Post("/admin/rag/knowledge-bases/{id}/ingest", gw.handleIngestDocument)
+	r.Post("/admin/rag/knowledge-bases/{id}/ingest-batch", gw.handleIngestBatch)
+	r.Get("/admin/rag/knowledge-bases/{id}/stats", gw.handleKBStats)
+	r.Delete("/admin/rag/knowledge-bases/{id}/chunks/{chunkID}", gw.handleDeleteChunk)
 
 	r.Post("/v1/chat/completions", gw.handleChatCompletion)
 	// Serve UI static files for SPA
 	uiFS := http.FileServer(http.Dir("./ui/dist"))
+	// MCP JSON-RPC endpoint - handled via inbound middleware before chi routing
+	// (POST to /mcp is intercepted by the mcpHandler wrapper before chi's /* catch-all)
+	
 	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/admin/") || strings.HasPrefix(r.URL.Path, "/v1/") || r.URL.Path == "/metrics" {
 			http.NotFound(w, r)
@@ -342,9 +456,22 @@ func New(cfg *config.Config, configPath string) (*Gateway, error) {
 	})
 	r.Post("/v1/embeddings", gw.handleEmbeddings)
 
+	// MCP interceptor - catches POST /mcp before chi routing (avoids catch-all conflict)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPost && req.URL.Path == "/mcp" {
+			if mcpHub != nil {
+				mcpHub.ServeHTTP(w, req)
+			} else {
+				mcpError(w, "MCP hub not initialized")
+			}
+			return
+		}
+		r.ServeHTTP(w, req)
+	})
+
 	gw.server = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		Handler:      r,
+		Handler:      handler,
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  60 * time.Second,
@@ -411,6 +538,9 @@ func (g *Gateway) Reload(cfg *config.Config) error {
 }
 
 func (g *Gateway) Start() error {
+		if g.prewarmer != nil {
+		g.prewarmer.Start(context.Background())
+	}
 	g.logger.Info("gateway starting",
 		"addr", g.server.Addr,
 		"routes", len(g.router.Routes()),
@@ -432,6 +562,9 @@ func (g *Gateway) Start() error {
 
 func (g *Gateway) Shutdown(ctx context.Context) error {
 	g.logger.Info("gateway shutting down")
+	if g.prewarmer != nil {
+		g.prewarmer.Stop()
+	}
 	if g.watcherStop != nil {
 		g.watcherStop()
 	}
@@ -592,6 +725,26 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ---- Experiment Engine (v3.0) override ----
+	// If an active A/B experiment matches the requested model,
+	// override the upstream selection with the experiment's assigned variant.
+	type experimentCtx struct {
+		expID   string
+		variant string
+	}
+	var expCtx *experimentCtx
+	if g.experimentEngine != nil {
+		if exp, variant := g.experimentEngine.MatchAndSelect(chatReq.Model); exp != nil && variant != nil {
+			upstreamNames = []string{variant.Upstream}
+			expCtx = &experimentCtx{expID: exp.ID, variant: variant.Name}
+			g.logger.Info("experiment route selected",
+				"experiment", exp.Name,
+				"variant", variant.Name,
+				"upstream", variant.Upstream,
+			)
+		}
+	}
+
 	var lastErr error
 	for i, name := range upstreamNames {
 		adapter, ok := g.adapters[name]
@@ -657,12 +810,28 @@ func (g *Gateway) handleChatCompletion(w http.ResponseWriter, r *http.Request) {
 
 			json.NewEncoder(w).Encode(result)
 			g.metrics.RecordRequest("POST", "/v1/chat/completions", "200", chatReq.Model, upstream.Provider, time.Since(start))
+			// Record experiment metrics
+			if expCtx != nil && result.Usage != nil {
+				g.experimentEngine.Record(expCtx.expID, expCtx.variant, experiment.Record{
+					Latency:          time.Since(start),
+					Success:          true,
+					PromptTokens:     result.Usage.PromptTokens,
+					CompletionTokens: result.Usage.CompletionTokens,
+				})
+			}
 			return
 		}
 
 		lastErr = err
 		g.logger.Warn("chat completion attempt failed, trying fallback",
 			"upstream", name, "attempt", i, "error", err)
+		// Record experiment metrics on failure
+		if expCtx != nil {
+			g.experimentEngine.Record(expCtx.expID, expCtx.variant, experiment.Record{
+				Latency: time.Since(start),
+				Success: false,
+			})
+		}
 	}
 
 	g.logger.Error("all upstream attempts failed", "error", lastErr)
@@ -824,6 +993,12 @@ func (g *Gateway) Handler() http.Handler {
 		semanticMiddleware = middleware.NewSemantic(g.semanticRouter, g.semanticCache, logger)
 	}
 
+	// RAG middleware
+	var ragMiddleware *middleware.RAGMiddleware
+	if g.cfg.RAG.Enabled && g.ragStore != nil {
+		ragMiddleware = middleware.NewRAG(g.cfg.RAG, g.ragStore, g.ragEmbedder, logger)
+	}
+
 	// Cost middleware
 	var costMiddleware *middleware.CostMiddleware
 	if g.costTracker != nil {
@@ -851,12 +1026,18 @@ func (g *Gateway) Handler() http.Handler {
 		redisClient:  redisClient,
 		semanticRouter: g.semanticRouter,
 		semanticCache:  g.semanticCache,
+		prewarmer:      g.prewarmer,
 		costTracker:    g.costTracker,
 		metrics:        collector,
 		auditStore:     g.auditStore,
 		promptManager:  g.promptManager,
 		webhookNotifier: g.webhookNotifier,
-		pluginManager:   g.pluginManager,
+		pluginManager:    g.pluginManager,
+		experimentEngine: g.experimentEngine,
+		evaluationRunner:  g.evaluationRunner,
+		mcpHub:             g.mcpHub,
+		ragStore:           g.ragStore,
+		ragEmbedder:        g.ragEmbedder,
 	}
 
 	r := chi.NewRouter()
@@ -877,6 +1058,9 @@ func (g *Gateway) Handler() http.Handler {
 	}
 	if semanticMiddleware != nil {
 		r.Use(semanticMiddleware.Middleware)
+	}
+	if ragMiddleware != nil {
+		r.Use(ragMiddleware.Middleware)
 	}
 	if costMiddleware != nil {
 		r.Use(costMiddleware.Middleware)
@@ -920,12 +1104,62 @@ func (g *Gateway) Handler() http.Handler {
 	r.Get("/admin/security/policies", gw.handleGetSecurityPolicies)
 	r.Put("/admin/security/policies", gw.handleUpdateSecurityPolicies)
 
+	r.Get("/admin/experiments", gw.handleListExperiments)
+	r.Post("/admin/experiments", gw.handleCreateExperiment)
+	r.Get("/admin/experiments/{id}", gw.handleGetExperiment)
+	r.Put("/admin/experiments/{id}", gw.handleUpdateExperiment)
+	r.Delete("/admin/experiments/{id}", gw.handleDeleteExperiment)
+	r.Get("/admin/experiments/{id}/results", gw.handleExperimentResults)
+	r.Post("/admin/experiments/{id}/start", gw.handleStartExperiment)
+	r.Post("/admin/experiments/{id}/stop", gw.handleStopExperiment)
+
+	r.Get("/admin/evaluations", gw.handleListEvalSuites)
+	r.Post("/admin/evaluations", gw.handleCreateEvalSuite)
+	r.Get("/admin/evaluations/{id}", gw.handleGetEvalSuite)
+	r.Delete("/admin/evaluations/{id}", gw.handleDeleteEvalSuite)
+	r.Post("/admin/evaluations/{id}/run", gw.handleRunEvaluation)
+	r.Get("/admin/evaluations/{id}/runs", gw.handleListEvalRuns)
+	r.Get("/admin/evaluations/{id}/runs/{runId}", gw.handleGetEvalRun)
+	r.Post("/admin/evaluations/{id}/runs/{runId}/cancel", gw.handleCancelEvalRun)
+	r.Post("/admin/mcp/servers", gw.handleAddMCPServer)
+	r.Get("/admin/mcp/servers", gw.handleListMCPServers)
+	r.Get("/admin/mcp/servers/{name}", gw.handleGetMCPServer)
+	r.Put("/admin/mcp/servers/{name}", gw.handleUpdateMCPServer)
+	r.Delete("/admin/mcp/servers/{name}", gw.handleDeleteMCPServer)
+		r.Get("/admin/cache/stats", gw.handleCacheStats)
+	r.Post("/admin/cache/prewarm", gw.handleCachePrewarm)
+	r.Get("/admin/cache/prewarm/stats", gw.handleCachePrewarmStats)
+r.Get("/admin/mcp/tools", gw.handleListMCPTools)
+	r.Post("/admin/mcp/servers/{name}/reconnect", gw.handleReconnectMCPServer)
+	r.Post("/admin/mcp/reload", gw.handleReloadMCP)
+	r.Get("/admin/rag/knowledge-bases", gw.handleListKnowledgeBases)
+	r.Post("/admin/rag/knowledge-bases", gw.handleCreateKnowledgeBase)
+	r.Get("/admin/rag/knowledge-bases/{id}", gw.handleGetKnowledgeBase)
+	r.Delete("/admin/rag/knowledge-bases/{id}", gw.handleDeleteKnowledgeBase)
+	r.Post("/admin/rag/knowledge-bases/{id}/ingest", gw.handleIngestDocument)
+	r.Post("/admin/rag/knowledge-bases/{id}/ingest-batch", gw.handleIngestBatch)
+	r.Get("/admin/rag/knowledge-bases/{id}/stats", gw.handleKBStats)
+	r.Delete("/admin/rag/knowledge-bases/{id}/chunks/{chunkID}", gw.handleDeleteChunk)
+
 	r.Post("/v1/chat/completions", gw.handleChatCompletion)
 	r.Post("/v1/embeddings", gw.handleEmbeddings)
 	r.Get("/openapi.yaml", gw.handleOpenAPISpec)
 	r.Get("/metrics", gw.handleMetrics)
 
 	return r
+}
+
+func mcpError(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      nil,
+		"error": map[string]interface{}{
+			"code":    -32000,
+			"message": message,
+		},
+	})
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

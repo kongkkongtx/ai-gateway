@@ -15,8 +15,8 @@ func NewAdminPermission() *AdminPermission {
 
 func (p *AdminPermission) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip permission check for proxy endpoints
-		if strings.HasPrefix(r.URL.Path, "/v1/") || r.URL.Path == "/admin/login" {
+		// Skip permission check for proxy endpoints and MCP
+		if strings.HasPrefix(r.URL.Path, "/v1/") || r.URL.Path == "/admin/login" || strings.HasPrefix(r.URL.Path, "/mcp") {
 			next.ServeHTTP(w, r)
 			return
 		}

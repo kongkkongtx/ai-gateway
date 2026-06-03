@@ -6,7 +6,7 @@ package provider
 import (
 	"net/http"
 
-	"github.com/yushi/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
 )
 
 // ProviderAdapter is the interface that all provider adapters must implement.

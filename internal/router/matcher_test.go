@@ -3,7 +3,7 @@ package router
 import (
 	"testing"
 
-	"github.com/yushi/ai-gateway/internal/config"
+	"github.com/kongkkongtx/ai-gateway/internal/config"
 )
 
 func TestMatchExact(t *testing.T) {

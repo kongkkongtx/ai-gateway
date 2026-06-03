@@ -1,8 +1,10 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Shield, Save, AlertTriangle } from 'lucide-react'
 import { getSecurityPolicies, updateSecurityPolicies, type SecurityPolicies } from '../api/gateway'
 
 export default function SecurityPoliciesPage() {
+  const { t } = useTranslation()
   const [policies, setPolicies] = useState<SecurityPolicies | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -51,7 +53,7 @@ export default function SecurityPoliciesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Security Policies</h1>
+          <h1 className="text-2xl font-bold text-white">{t('security.title')}</h1>
           <p className="text-sm text-surface-400 mt-1">Configure prompt injection detection, PII masking, and IP filtering</p>
         </div>
         <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2">

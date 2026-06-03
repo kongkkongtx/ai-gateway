@@ -19,6 +19,13 @@ const (
 	EventSecuritySanitize EventType = "security.sanitize"
 	EventUpstreamDown    EventType = "upstream.down"
 	EventUpstreamUp      EventType = "upstream.up"
+	EventExperimentSignificant EventType = "experiment.significant"
+	EventEvalRunCompleted      EventType = "evaluation.completed"
+	EventEvalRunFailed         EventType = "evaluation.failed"
+	EventMCPToolExecuted       EventType = "mcp.tool.executed"
+	EventMCPToolFailed         EventType = "mcp.tool.failed"
+	EventMCPServerDown         EventType = "mcp.server.down"
+	EventMCPServerUp           EventType = "mcp.server.up"
 )
 
 // Event carries data for webhook delivery.

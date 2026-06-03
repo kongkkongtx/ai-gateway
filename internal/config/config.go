@@ -9,12 +9,16 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/yushi/ai-gateway/internal/security"
-	"github.com/yushi/ai-gateway/internal/cost"
-	"github.com/yushi/ai-gateway/internal/semantic"
-	"github.com/yushi/ai-gateway/internal/prompt"
-	"github.com/yushi/ai-gateway/internal/webhook"
-	"github.com/yushi/ai-gateway/internal/plugin"
+	"github.com/kongkkongtx/ai-gateway/internal/security"
+	"github.com/kongkkongtx/ai-gateway/internal/cost"
+	"github.com/kongkkongtx/ai-gateway/internal/semantic"
+	"github.com/kongkkongtx/ai-gateway/internal/prompt"
+	"github.com/kongkkongtx/ai-gateway/internal/webhook"
+	"github.com/kongkkongtx/ai-gateway/internal/plugin"
+	"github.com/kongkkongtx/ai-gateway/internal/experiment"
+	"github.com/kongkkongtx/ai-gateway/internal/evaluation"
+	"github.com/kongkkongtx/ai-gateway/internal/mcp"
+	"github.com/kongkkongtx/ai-gateway/internal/rag"
 )
 
 type Config struct {
@@ -27,12 +31,16 @@ type Config struct {
 	Semantic  semantic.SemanticRouterConfig `yaml:"semantic"`
 	SemanticCache semantic.SemanticCacheConfig  `yaml:"semantic_cache"`
 	Cost        cost.Config              `yaml:"cost"`
-	Security  security.Config    `yaml:"security"`
-	Prompt    prompt.Config     `yaml:"prompt_templates"`
-	Webhook   webhook.Config    `yaml:"webhook"`
-	Plugin    plugin.Config     `yaml:"plugins"`
-	Audit     AuditConfig        `yaml:"audit"`
-	Log       LogConfig          `yaml:"log"`
+	Security  security.Config          `yaml:"security"`
+	Prompt    prompt.Config           `yaml:"prompt_templates"`
+	Webhook   webhook.Config          `yaml:"webhook"`
+	Plugin    plugin.Config           `yaml:"plugins"`
+	Audit     AuditConfig              `yaml:"audit"`
+	Log       LogConfig                `yaml:"log"`
+	Experiment  experiment.Config      `yaml:"experiments"`
+	Evaluation  evaluation.Config      `yaml:"evaluation"`
+	MCP         mcp.Config               `yaml:"mcp"`
+	RAG         rag.Config                `yaml:"rag"`
 }
 
 type ServerConfig struct {
@@ -127,7 +135,10 @@ func DefaultConfig() *Config {
 		Security:  security.DefaultConfig(),
 		Semantic:     semantic.SemanticRouterConfig{},
 		SemanticCache: semantic.SemanticCacheConfig{},
-		Cost:          cost.Config{},
+		Experiment:    experiment.Config{},
+		Evaluation:    evaluation.Config{},
+		MCP:           mcp.Config{},
+		RAG:           rag.Config{},
 		Log:       LogConfig{Level: "info", Format: "text"},
 	}
 }

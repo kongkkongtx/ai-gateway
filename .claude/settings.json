@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v \"^$\")",
+      "Bash(taskkill //F //PID 54912)",
+      "Bash(echo \"Build exit code: $?\")",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

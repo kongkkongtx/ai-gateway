@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/yushi/ai-gateway/internal/tracing"
+	"github.com/kongkkongtx/ai-gateway/internal/tracing"
 )
 
 // TracingMiddleware creates an OpenTelemetry span for each HTTP request.

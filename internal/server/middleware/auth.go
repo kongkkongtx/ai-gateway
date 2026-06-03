@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yushi/ai-gateway/internal/user"
+	"github.com/kongkkongtx/ai-gateway/internal/user"
 )
 
 type contextKey string

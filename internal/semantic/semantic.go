@@ -22,10 +22,18 @@ type Category struct {
 
 // SemanticCacheConfig defines semantic cache settings.
 type SemanticCacheConfig struct {
-	Enabled    bool    `yaml:"enabled"`
-	Threshold  float64 `yaml:"threshold"` // Similarity threshold (0.0-1.0)
-	TTL        string  `yaml:"ttl"`      // Cache TTL (e.g. "10m", "1h")
-	MaxEntries int     `yaml:"max_entries"`
+	Enabled    bool          `yaml:"enabled"`
+	Threshold  float64       `yaml:"threshold"` // Similarity threshold (0.0-1.0)
+	TTL        string        `yaml:"ttl"`      // Cache TTL (e.g. "10m", "1h")
+	MaxEntries int           `yaml:"max_entries"`
+	Prewarm    PrewarmConfig `yaml:"prewarm"`
+}
+
+type PrewarmConfig struct {
+	Enabled     bool     `yaml:"enabled"`
+	SeedQueries []string `yaml:"seed_queries"`
+	TopK        int      `yaml:"top_k"`
+	Concurrency int      `yaml:"concurrency"`
 }
 
 // CosineSimilarity computes the cosine similarity between two vectors.

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Terminal,
   Send,
@@ -53,6 +54,7 @@ function saveSettings(s: PlaygroundSettings) {
 }
 
 export default function Playground() {
+  const { t } = useTranslation()
   const [settings, setSettings] = useState<PlaygroundSettings>(loadSettings)
   const [messages, setMessages] = useState<Message[]>([
     { role: 'system', content: 'You are a helpful AI assistant.' },
@@ -172,7 +174,7 @@ export default function Playground() {
       {/* Header */}
       <div className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-white">Playground</h1>
+          <h1 className="text-2xl font-bold text-white">{t('playground.title')}</h1>
           <p className="text-sm text-surface-400 mt-1">Online AI Gateway API testing</p>
         </div>
         <div className="flex items-center gap-2">

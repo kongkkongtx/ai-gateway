@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/yushi/ai-gateway/internal/cost"
+	"github.com/kongkkongtx/ai-gateway/internal/cost"
 )
 
 // CostMiddleware enforces token quotas and budget limits per API key.

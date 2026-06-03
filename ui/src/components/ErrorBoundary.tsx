@@ -1,4 +1,4 @@
-﻿import { Component, type ReactNode, type ErrorInfo } from 'react'
+import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 
 interface Props {
@@ -9,6 +9,17 @@ interface Props {
 interface State {
   hasError: boolean
   error: Error | null
+}
+
+// Use a simple store-based approach instead of hooks since this is a class component
+let _errorLabels = {
+  title: 'Something went wrong',
+  defaultMsg: 'An unexpected error occurred',
+  retry: 'Try Again',
+}
+
+export function setErrorLabels(labels: { title: string; defaultMsg: string; retry: string }) {
+  _errorLabels = labels
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
@@ -41,12 +52,12 @@ export default class ErrorBoundary extends Component<Props, State> {
                 <AlertTriangle size={24} className="text-red-400" />
               </div>
             </div>
-            <h2 className="text-lg font-semibold text-white mb-2">Something went wrong</h2>
+            <h2 className="text-lg font-semibold text-white mb-2">{_errorLabels.title}</h2>
             <p className="text-sm text-surface-400 mb-4">
-              {this.state.error?.message || 'An unexpected error occurred'}
+              {this.state.error?.message || _errorLabels.defaultMsg}
             </p>
             <button onClick={this.handleRetry} className="btn-primary flex items-center gap-2 mx-auto">
-              <RefreshCw size={14} /> Try Again
+              <RefreshCw size={14} /> {_errorLabels.retry}
             </button>
           </div>
         </div>

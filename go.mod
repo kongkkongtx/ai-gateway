@@ -1,4 +1,4 @@
-module github.com/yushi/ai-gateway
+module github.com/kongkkongtx/ai-gateway
 
 go 1.22.0
 

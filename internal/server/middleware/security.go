@@ -9,7 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/yushi/ai-gateway/internal/security"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/security"
 )
 
 // SecurityEventCallback is called when a security event occurs.
@@ -102,7 +103,7 @@ func (s *SecurityMiddleware) Middleware(next http.Handler) http.Handler {
 			var chatReq struct {
 				Messages []struct {
 					Role    string `json:"role"`
-					Content string `json:"content"`
+					Content any `json:"content"`
 				} `json:"messages"`
 				Stream bool `json:"stream"`
 			}
@@ -123,14 +124,14 @@ func (s *SecurityMiddleware) Middleware(next http.Handler) http.Handler {
 
 func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any `json:"content"`
 }, stream bool) []byte {
 
 	var sanitized bool
 	if s.promptDetector != nil && s.injCfg.Enabled {
 		var messageTexts []string
 		for _, msg := range messages {
-			messageTexts = append(messageTexts, msg.Content)
+			messageTexts = append(messageTexts, openai.ExtractText(msg.Content))
 		}
 
 		result, err := security.ScanMessages(messageTexts, s.promptDetector)
@@ -167,10 +168,11 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 				case "log":
 				case "sanitize":
 					for i, msg := range messages {
-						cleaned, changed := sanitizeContent(msg.Content, result.Pattern)
+						cleaned, changed := sanitizeContent(openai.ExtractText(msg.Content), result.Pattern)
 						if changed {
 							s.logger.Info("prompt sanitized", "message_idx", i, "pattern", result.Pattern)
-							messages[i].Content = cleaned
+							// sanitize only modifies text, not images
+								messages[i].Content = cleaned
 						}
 					}
 					sanitized = true
@@ -191,7 +193,7 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 		}
 		redacted := false
 		for i, msg := range messages {
-			newContent, matches, err := s.piiRedactor.Redact(msg.Content)
+			newContent, matches, err := s.piiRedactor.Redact(openai.ExtractText(msg.Content))
 			if err != nil {
 				s.logger.Warn("PII check blocked request", "error", err)
 				return nil
@@ -209,7 +211,7 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 			if err := json.Unmarshal(originalBody, &reqMap); err == nil {
 				type msgStruct struct {
 					Role    string `json:"role"`
-					Content string `json:"content"`
+					Content any `json:"content"`
 				}
 				var newMsgs []msgStruct
 				for _, m := range messages {
@@ -229,7 +231,7 @@ func (s *SecurityMiddleware) processChatRequest(originalBody []byte, messages []
 		if err := json.Unmarshal(originalBody, &reqMap); err == nil {
 			type msgStruct struct {
 				Role    string `json:"role"`
-				Content string `json:"content"`
+				Content any `json:"content"`
 			}
 			var newMsgs []msgStruct
 			for _, m := range messages {

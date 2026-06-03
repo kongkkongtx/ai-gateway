@@ -8,8 +8,8 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/yushi/ai-gateway/internal/cache"
-	"github.com/yushi/ai-gateway/internal/config"
+	"github.com/kongkkongtx/ai-gateway/internal/cache"
+	"github.com/kongkkongtx/ai-gateway/internal/config"
 )
 
 // RateLimiter provides request rate limiting with Redis or in-memory backend.

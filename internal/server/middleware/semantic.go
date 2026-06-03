@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/yushi/ai-gateway/internal/semantic"
+	"github.com/kongkkongtx/ai-gateway/internal/semantic"
 )
 
 // SemanticMiddleware provides semantic routing and semantic caching for
@@ -105,6 +105,7 @@ func (m *SemanticMiddleware) Middleware(next http.Handler) http.Handler {
 			}
 			next.ServeHTTP(wrapped, r)
 			wrapped.flushCache()
+			return
 		}
 
 		next.ServeHTTP(w, r)
@@ -139,8 +140,18 @@ func extractQueryText(reqMap map[string]interface{}) string {
 		}
 		role, _ := msg["role"].(string)
 		if role == "user" {
-			content, _ := msg["content"].(string)
-			return content
+			switch c := msg["content"].(type) {
+			case string:
+				return c
+			case []interface{}:
+				for _, part := range c {
+					if pm, ok2 := part.(map[string]interface{}); ok2 && pm["type"] == "text" {
+						if text, ok3 := pm["text"].(string); ok3 {
+							return text
+						}
+					}
+				}
+			}
 		}
 	}
 	return ""

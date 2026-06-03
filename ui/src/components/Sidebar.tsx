@@ -20,8 +20,8 @@ export default function Sidebar({ onLogout }: SidebarProps) {
     { to: '/routes', icon: Route, label: t('nav.routes') },
     { to: '/keys', icon: Key, label: t('nav.keys') },
     { to: '/playground', icon: Terminal, label: t('nav.playground') },
-    { to: '/users', icon: Users, label: 'Users' },
-    { to: '/security', icon: Shield, label: 'Security' },
+    { to: '/users', icon: Users, label: t('nav.users') },
+    { to: '/security', icon: Shield, label: t('nav.security') },
     { to: '/audit-logs', icon: ScrollText, label: t('nav.audit') },
     { to: '/prompts', icon: FileText, label: t('nav.prompts') },
     { to: '/settings', icon: Sliders, label: t('nav.settings') },
@@ -84,12 +84,12 @@ export default function Sidebar({ onLogout }: SidebarProps) {
         {onLogout && (
           <button onClick={onLogout} className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs text-surface-400 hover:text-red-400 hover:bg-red-900/10 transition-colors">
             <LogOut size={14} />
-            <span>Sign Out</span>
+            <span>{t('components.sign_out')}</span>
           </button>
         )}
         <div className="flex items-center gap-2 text-xs text-surface-500">
           <div className="w-2 h-2 rounded-full bg-accent-500" />
-          <span>v2.2</span>
+          <span>{t('components.version')}</span>
         </div>
       </div>
     </aside>

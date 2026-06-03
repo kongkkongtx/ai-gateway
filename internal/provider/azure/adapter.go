@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yushi/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
 )
 
 // Adapter proxies requests to Azure OpenAI Service.

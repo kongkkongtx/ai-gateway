@@ -1,7 +1,7 @@
 package semantic
 
 import (
-	"github.com/yushi/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
 )
 
 // EmbeddingClient implements the Embedder interface using a provider's

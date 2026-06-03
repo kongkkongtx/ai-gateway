@@ -4,5 +4,12 @@
 bin/
 ui/node_modules/
 ui/dist/
-
-package-lock.json
+.gocache/
+.versions/
+data/
+gateway.err
+gateway.log
+test_body.json
+ui/fix.py
+*.versions/
+sName=*

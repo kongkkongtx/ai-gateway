@@ -5,7 +5,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/yushi/ai-gateway/internal/config"
+	"github.com/kongkkongtx/ai-gateway/internal/config"
 )
 
 type Route struct {

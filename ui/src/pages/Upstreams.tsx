@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { RefreshCw, Server, Zap, Activity, ExternalLink, Clock, Plus, Trash2, Edit3, Save, AlertTriangle } from 'lucide-react'
 import { getUpstreams, addSingleUpstream, deleteUpstream } from '../api/gateway'
 import StatusBadge from '../components/StatusBadge'
@@ -27,6 +29,7 @@ export default function UpstreamsPage() {
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const { t } = useTranslation()
   const { toast } = useToast()
 
   const fetchData = useCallback(async (silent = false) => {
@@ -104,9 +107,9 @@ export default function UpstreamsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Upstreams</h1>
+          <h1 className="text-2xl font-bold text-white">{t("upstreams.title")}</h1>
           <p className="text-sm text-surface-400 mt-1">
-            {loading ? 'Loading...' : `${healthyCount}/${upstreams.length} healthy`}
+            {loading ? t('common.loading') : `${healthyCount}/${upstreams.length} healthy`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -117,7 +120,7 @@ export default function UpstreamsPage() {
             </span>
           )}
           <button onClick={openAdd} className="btn-primary flex items-center gap-1.5 text-xs">
-            <Plus size={14} /> Add Upstream
+            <Plus size={14} /> {t("upstreams.add")}
           </button>
           <button onClick={() => { setAutoRefresh(!autoRefresh) }}
             className={`text-xs px-2 py-1 rounded-md transition-colors ${
@@ -125,7 +128,7 @@ export default function UpstreamsPage() {
             }`}>Auto</button>
           <button onClick={() => { setRefreshing(true); fetchData(false) }} disabled={refreshing}
             className="btn-ghost flex items-center gap-2">
-            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> Refresh
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} /> {t("common.refresh")}
           </button>
         </div>
       </div>
@@ -135,13 +138,13 @@ export default function UpstreamsPage() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-surface-800">
-              <th className="text-left text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">Upstream</th>
-              <th className="text-left text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">Endpoint</th>
-              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">Provider</th>
-              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">Weight</th>
-              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">Conns</th>
-              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">Status</th>
-              <th className="text-right text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">Actions</th>
+              <th className="text-left text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">{t("upstreams.table_upstream")}</th>
+              <th className="text-left text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">{t("upstreams.table_endpoint")}</th>
+              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">{t("upstreams.table_provider")}</th>
+              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">{t("upstreams.table_weight")}</th>
+              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">{t("upstreams.table_conns")}</th>
+              <th className="text-center text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">{t("upstreams.table_status")}</th>
+              <th className="text-right text-xs font-semibold text-surface-400 uppercase tracking-wider px-6 py-4">{t("upstreams.table_actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-800/50">
@@ -154,7 +157,7 @@ export default function UpstreamsPage() {
                 </tr>
               ))
             ) : upstreams.length === 0 ? (
-              <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-surface-500">No upstreams configured</td></tr>
+              <tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-surface-500">{t("upstreams.no_upstreams")}</td></tr>
             ) : (
               upstreams.map((u, idx) => (
                 <tr key={u.name} className={`hover:bg-surface-900/50 transition-colors ${idx % 2 === 0 ? 'bg-surface-950/20' : ''}`}>
@@ -193,8 +196,8 @@ export default function UpstreamsPage() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => openEdit(u)} className="p-2 rounded-lg text-surface-500 hover:text-accent-400 hover:bg-accent-900/20 transition-colors" title="Edit"><Edit3 size={14} /></button>
-                      <button onClick={() => handleDelete(u.name)} className="p-2 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-900/20 transition-colors" title="Delete"><Trash2 size={14} /></button>
+                      <button onClick={() => openEdit(u)} className="p-2 rounded-lg text-surface-500 hover:text-accent-400 hover:bg-accent-900/20 transition-colors" title={t("common.edit", "Edit")}><Edit3 size={14} /></button>
+                      <button onClick={() => handleDelete(u.name)} className="p-2 rounded-lg text-surface-500 hover:text-red-400 hover:bg-red-900/20 transition-colors" title={t("common.delete")}><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -216,13 +219,13 @@ export default function UpstreamsPage() {
           )}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">Name *</label>
+              <label className="block text-xs font-medium text-surface-400 mb-1.5">{t("upstreams.field_name")}</label>
               <input className="input w-full" placeholder="my-upstream"
                 value={editForm.name} disabled={!!editingName}
                 onChange={(e) => setEditForm({...editForm, name: e.target.value})} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">Provider *</label>
+              <label className="block text-xs font-medium text-surface-400 mb-1.5">{t("upstreams.field_provider")}</label>
               <select className="input w-full" value={editForm.provider}
                 onChange={(e) => setEditForm({...editForm, provider: e.target.value})}>
                 {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -230,20 +233,20 @@ export default function UpstreamsPage() {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-400 mb-1.5">Endpoint *</label>
+            <label className="block text-xs font-medium text-surface-400 mb-1.5">{t("upstreams.field_endpoint")}</label>
             <input className="input w-full font-mono text-xs" placeholder="https://api.openai.com"
               value={editForm.endpoint}
               onChange={(e) => setEditForm({...editForm, endpoint: e.target.value})} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">API Token</label>
+              <label className="block text-xs font-medium text-surface-400 mb-1.5">{t("upstreams.field_api_token")}</label>
               <input className="input w-full font-mono text-xs" type="password" placeholder="sk-..."
                 value={editForm.api_token || ''}
                 onChange={(e) => setEditForm({...editForm, api_token: e.target.value})} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">Model</label>
+              <label className="block text-xs font-medium text-surface-400 mb-1.5">{t("upstreams.field_model")}</label>
               <input className="input w-full font-mono text-xs" placeholder="gpt-4o"
                 value={editForm.model || ''}
                 onChange={(e) => setEditForm({...editForm, model: e.target.value})} />
@@ -251,22 +254,22 @@ export default function UpstreamsPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">Weight</label>
+              <label className="block text-xs font-medium text-surface-400 mb-1.5">{t("upstreams.field_weight")}</label>
               <input className="input w-full" type="number" min="1"
                 value={editForm.weight}
                 onChange={(e) => setEditForm({...editForm, weight: parseInt(e.target.value) || 1})} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-surface-400 mb-1.5">Timeout</label>
+              <label className="block text-xs font-medium text-surface-400 mb-1.5">{t("upstreams.field_timeout")}</label>
               <input className="input w-full font-mono text-xs" placeholder="30s"
                 value={editForm.timeout || '30s'}
                 onChange={(e) => setEditForm({...editForm, timeout: e.target.value})} />
             </div>
           </div>
           <div className="flex justify-end gap-3 pt-2">
-            <button onClick={() => setShowEditor(false)} className="btn-ghost text-sm">Cancel</button>
+            <button onClick={() => setShowEditor(false)} className="btn-ghost text-sm">{t("common.cancel")}</button>
             <button onClick={handleSave} disabled={saving} className="btn-primary flex items-center gap-2 text-sm">
-              <Save size={14} /> {saving ? 'Saving...' : 'Save'}
+              <Save size={14} /> {saving ? t("upstreams.saving") : t("common.save")}
             </button>
           </div>
         </div>
@@ -275,9 +278,9 @@ export default function UpstreamsPage() {
         open={confirmTarget !== null}
         onClose={() => setConfirmTarget(null)}
         onConfirm={confirmDelete}
-        title="Delete Upstream"
+        title={t("upstreams.delete_title")}
         message={`Delete upstream "${confirmTarget ?? ""}"? Routes referencing this upstream must be updated first.`}
-        confirmLabel="Delete"
+        confirmLabel={t("common.delete")}
         variant="danger"
         loading={confirmLoading}
       />

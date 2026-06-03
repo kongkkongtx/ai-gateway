@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { RefreshCw, Search, Filter, AlertTriangle, Info, AlertCircle } from 'lucide-react'
 import { getAuditLogs } from '../api/gateway'
 import type { AuditLogEntry } from '../api/gateway'
@@ -14,6 +15,7 @@ const LEVEL_COLORS: Record<string, string> = {
   error: 'text-red-400 bg-red-400/10',
 }
 export default function AuditLogsPage() {
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<AuditLogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -44,7 +46,7 @@ export default function AuditLogsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Audit Logs</h1>
+          <h1 className="text-2xl font-bold text-white">{t('audit.title')}</h1>
           <p className="text-sm text-surface-400 mt-1">Recent API request history</p>
         </div>
         <button

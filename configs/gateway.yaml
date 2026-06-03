@@ -86,6 +86,11 @@ semantic_cache:
     threshold: 0.92
     ttl: 10m
     max_entries: 1000
+    prewarm:
+        enabled: false
+        seed_queries: []
+        top_k: 10
+        concurrency: 3
 cost:
     enabled: false
     default_limit:
@@ -155,3 +160,60 @@ audit:
 log:
     level: info
     format: text
+# A/B testing experiments (disabled by default)
+experiments:
+    enabled: false
+    experiments: []
+    # - id: exp-001
+    #   name: GPT-4o Provider Comparison
+    #   model: gpt-4o*
+    #   active: true
+    #   variants:
+    #     - name: openai-primary
+    #       upstream: deepseek-primary
+    #       weight: 70
+    #     - name: openai-experiment
+    #       upstream: openai-fallback
+    #       weight: 30
+
+# Model evaluation suites (disabled by default)
+evaluation:
+    enabled: false
+    suites: []
+    # - id: eval-001
+    #   name: Quality Baseline
+    #   test_prompts:
+    #     - id: tp-1
+    #       prompt: Explain AI in simple terms
+    #       reference_answer: AI is the simulation of human intelligence
+    #   target_models:
+    #     - name: DeepSeek Chat
+    #       upstream: deepseek-primary
+    #       model: deepseek-chat
+    #   judge:
+    #     type: exact_match
+    #     threshold: 0.7
+# MCP (Model Context Protocol) server aggregation (disabled by default)
+mcp:
+    enabled: true
+    servers: []
+    # - name: weather-server
+    #   transport: http
+    #   endpoint: http://localhost:9001/mcp
+    #   timeout: 30s
+    #   enabled: true
+    #   tool_filter:
+    #     allow: []
+    #     # deny: ["sensitive_tool"]
+
+# Knowledge Base / RAG configuration (disabled by default)
+rag:
+    enabled: false
+    top_k: 5
+    score_threshold: 0.75
+    max_context_tokens: 2000
+    embedding_provider: deepseek-primary
+    embedding_model: text-embedding-3-small
+    system_prompt: "You are a helpful AI assistant. Answer questions using ONLY the provided context."
+    knowledge_bases: []
+    route_overrides: []

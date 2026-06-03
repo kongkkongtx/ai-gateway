@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Route, RefreshCw, ArrowRight, Hash, Layers, Clock, Edit3, Save, AlertTriangle, Plus, Trash2 } from 'lucide-react'
 import { getAdminRoutes, addSingleRoute, deleteRoute, reloadRoutes } from '../api/gateway'
 import Modal from '../components/Modal'
@@ -9,6 +10,7 @@ import type { RouteConfig } from '../api/gateway'
 const emptyRoute = (): RouteConfig => ({ id: '', model: '', upstream: '', fallbacks: [], priority: 0 })
 
 export default function RoutesPage() {
+  const { t } = useTranslation()
   const [routes, setRoutes] = useState<RouteConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
@@ -131,9 +133,9 @@ export default function RoutesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Routes</h1>
+          <h1 className="text-2xl font-bold text-white">{t('routes.title')}</h1>
           <p className="text-sm text-surface-400 mt-1">
-            {loading ? 'Loading...' : `${routes.length} routing rules`}
+            {loading ? t('common.loading') : t('routes.rules_count', { count: routes.length })}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -144,7 +146,7 @@ export default function RoutesPage() {
             </span>
           )}
           <button onClick={openAddForm} className="btn-primary flex items-center gap-1.5 text-xs">
-            <Plus size={14} /> Add Route
+            <Plus size={14} /> {t('routes.add')}
           </button>
           <button onClick={openJsonEditor} className="btn-ghost flex items-center gap-1.5 text-xs">
             <Edit3 size={14} /> JSON Edit
@@ -178,7 +180,7 @@ export default function RoutesPage() {
                 </tr>
               ))
             ) : routes.length === 0 ? (
-              <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-surface-500">No routes configured</td></tr>
+              <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-surface-500">{t('routes.no_routes')}</td></tr>
             ) : (
               routes.map((r, idx) => (
                 <tr key={r.id} className={`hover:bg-surface-900/50 transition-colors ${idx % 2 === 0 ? 'bg-surface-950/20' : ''}`}>

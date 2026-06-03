@@ -74,6 +74,29 @@ print(response.choices[0].message.content)
 - **Provider Fallback** — 上游超时时自动切换到备用提供商
 - **插件系统** — 自定义 Provider / Security / Router 插件，通过 HTTP 接口扩展
 
+### A/B 测试与模型评估
+- **A/B 测试引擎** — 同一模型多 provider 按比例分配流量，对比延迟/错误率/Token 成本
+- **模型效果评估** — 定义测试提示集，对多个模型自动评分（精确匹配/语义相似度/LLM 裁判）
+- **显著性检测** — variant 指标偏离超过阈值时自动告警
+
+### RAG 知识库
+- **知识库管理** — 通过 Admin API 创建、摄取、管理文档集合
+- **递归分块** — 自动将文档按配置大小和重叠度拆分为优化分块
+- **向量搜索** — 内存余弦相似度搜索，可插拔向量存储接口
+- **上下文注入** — 检索到的分块自动以 XML 格式注入到 prompt 中
+
+### MCP Server 集成
+- **MCP Hub** — 聚合多个后端 MCP Server，对外暴露统一 `/mcp` 端点
+- **工具命名空间** — 自动添加 `{serverName}__{toolName}` 前缀避免冲突
+- **JSON-RPC 2.0** — 完整协议支持：initialize、tools/list、tools/call、ping
+- **工具过滤** — 每个 server 支持白名单/黑名单和通配符
+
+### 多模态支持
+- **图片内容** — 支持 OpenAI `image_url` content parts 代理透传
+- **音频内容** — 支持 OpenAI `input_audio` content parts
+- **ContentPart 类型** — 统一的消息内容块格式，各适配器兼容
+- **后端兼容** — 适配 OpenAI、Anthropic、Google Gemini、Azure
+
 ### 安全防护
 - **API Key 管理** — 多密钥认证，支持角色权限
 - **Prompt 注入检测** — 内置规则引擎 (角色劫持/越狱/数据窃取等 80+ 规则)
@@ -85,13 +108,14 @@ print(response.choices[0].message.content)
 - **预算告警** — 用量达到阈值时自动通知
 - **自动降级** — 超限后自动切换到更便宜的模型
 - **语义缓存** — 相似请求命中缓存，减少重复 API 调用
+- **缓存预热** — 启动时预加载种子查询，自动按命中率刷新热点查询，TTL 过期
 
 ### 可观测性
-- **Prometheus 指标** — 请求量、延迟、Token 用量、上游健康状态
+- **Prometheus 指标** — 请求量、延迟、Token 用量、上游健康、实验结果
 - **OpenTelemetry 追踪** — 全链路请求追踪
 - **结构化审计日志** — 每次请求的完整记录
 - **Webhook 通知** — 成本告警、安全事件、上游故障的实时推送
-- **实时管理面板** — Dashboard / Upstreams / Routes / Keys / Settings / Prompts / Audit Logs
+- **实时管理面板** — Dashboard / Upstreams / Routes / Keys / Users / Security / Settings / Prompts / Audit Logs
 
 ### 部署
 - **Kubernetes 原生** — 支持 ConfigMap 配置挂载，一键部署到 K8s
@@ -111,14 +135,20 @@ print(response.choices[0].message.content)
 | Prompt Injection Detection | ✅ | ✅ | 待验证 |
 | PII Sanitization | ✅ | ✅ | 待验证 |
 | Semantic Router | ✅ | ✅ | 待验证 |
-| Semantic Cache | ✅ | ✅ | 待验证 |
+| Semantic Cache + Prewarming | ✅ | ✅ | 待验证 |
 | Cost Control | ✅ | ✅ | 待验证 |
 | Audit Logs | ✅ | ✅ | 待持久化 |
 | Prompt Templates | ✅ | ✅ | 待验证 |
 | Webhook Notifications | ✅ | ✅ | 待验证 |
 | Plugin System | ✅ | ✅ | 待验证 |
-| Admin UI | ✅ | ✅ | 待完善 |
+| Admin UI (i18n) | ✅ | ✅ | 待完善 |
 | Python / Node SDK | ✅ | ✅ | 待完善 |
+| A/B Testing Engine | ✅ | ✅ | 待验证 |
+| Model Evaluation Framework | ✅ | ✅ | 待验证 |
+| MCP Server Hub | ✅ | ✅ | 待验证 |
+| RAG Knowledge Base | ✅ | ✅ | 待验证 |
+| Multimodal Support | ✅ | ✅ | 待验证 |
+| Cache Prewarming | ✅ | ✅ | 待验证 |
 
 ---
 
@@ -191,6 +221,21 @@ print(response.choices[0].message.content)
 | PUT | /admin/webhook | 更新 Webhook 配置 |
 | GET | /admin/plugins | 插件列表 |
 | POST | /admin/plugins | 重载插件配置 |
+| GET | /admin/experiments | 列出 A/B 实验 |
+| POST | /admin/experiments | 创建 A/B 实验 |
+| POST | /admin/experiments/{id}/start|stop | 启动/停止实验 |
+| GET | /admin/experiments/{id}/results | 实验结果 + 显著性告警 |
+| GET | /admin/evaluations | 列出评估套件 |
+| POST | /admin/evaluations | 创建评估套件 |
+| POST | /admin/evaluations/{id}/run | 触发评估运行 |
+| GET | /admin/evaluations/{id}/runs | 评估运行历史 |
+| POST | /admin/rag/knowledge-bases | 创建知识库 |
+| POST | /admin/rag/knowledge-bases/{id}/ingest | 摄取文档 |
+| GET | /admin/rag/knowledge-bases/{id}/stats | 知识库统计 |
+| GET | /admin/mcp/servers | 列出 MCP 服务器 |
+| POST | /admin/mcp | MCP JSON-RPC 端点 |
+| GET | /admin/cache/stats | 语义缓存统计 |
+| POST | /admin/cache/prewarm | 触发缓存预热 |
 | GET | /metrics | Prometheus 指标 |
 | GET | /openapi.yaml | OpenAPI 规范 |
 
@@ -203,9 +248,9 @@ print(response.choices[0].message.content)
 | v1.0 | Phase 1 — MVP 核心骨架 | ✅ 已完成 | OpenAI 代理、路由、负载均衡、认证限流 |
 | v1.5 | Phase 2 — 多提供商 | ✅ 已完成 | Anthropic/Google/Azure、Fallback、Redis、K8s |
 | v2.0 | Phase 3 — 差异化竞争力 | ✅ 已完成 | 语义路由、安全检测、PII 脱敏、语义缓存、成本控制、Web UI、Prompt 模版、Webhook、插件系统、SDK |
-| v2.1 | 生产可信版本 | 🎯 当前开发 | 管线集成、流式兼容、成本补全、审计持久化、配置回滚、Docker Compose、集成测试 |
-| v2.2 | 企业治理版本 | 📋 规划中 | 多用户/RBAC、团队成本、API Key 生命周期、安全策略中心、审计导出、SSO |
-| v3.0 | 智能优化版本 | 📋 远期规划 | A/B 测试、模型评估、多模态、RAG、MCP |
+| v2.1 | 生产可信版本 | ✅ 已完成 | 管线集成、流式兼容、成本补全、审计持久化、配置回滚、Docker Compose、集成测试 |
+| v2.2 | 企业治理版本 | ✅ 已完成 | 多用户/RBAC、团队成本、API Key 生命周期、安全策略中心、审计导出、SSO |
+| v3.0 | 智能优化版本 | 🎯 开发中 | **P0**: A/B 测试、模型评估 ✅ — **P1**: MCP、RAG、多模态、缓存预热 ✅ — **P2**: 智能路由、团队协作、Terraform |
 
 查看完整路线图：[ROADMAP.md](ROADMAP.md) | 中期审查：[MIDTERM_REVIEW_RECOMMENDATIONS.md](docs/MIDTERM_REVIEW_RECOMMENDATIONS.md)
 

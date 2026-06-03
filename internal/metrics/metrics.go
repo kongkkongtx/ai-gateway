@@ -10,13 +10,15 @@ import (
 )
 
 type Collector struct {
-	requestsTotal     *prometheus.CounterVec
-	requestDuration   *prometheus.HistogramVec
-	tokensTotal       *prometheus.CounterVec
-	activeRequests    prometheus.Gauge
-	upstreamHealth    *prometheus.GaugeVec
-	rateLimitExceeded *prometheus.CounterVec
-	registry          *prometheus.Registry
+	requestsTotal        *prometheus.CounterVec
+	requestDuration      *prometheus.HistogramVec
+	tokensTotal          *prometheus.CounterVec
+	activeRequests       prometheus.Gauge
+	upstreamHealth       *prometheus.GaugeVec
+	rateLimitExceeded    *prometheus.CounterVec
+	experimentRequests   *prometheus.CounterVec
+	experimentLatency    *prometheus.HistogramVec
+	registry             *prometheus.Registry
 }
 
 func NewCollector(reg *prometheus.Registry) *Collector {
@@ -51,8 +53,21 @@ func NewCollector(reg *prometheus.Registry) *Collector {
 		prometheus.CounterOpts{Name: "gateway_rate_limit_exceeded_total", Help: "Total number of rate-limited requests"},
 		[]string{"type"},
 	)
+	c.experimentRequests = prometheus.NewCounterVec(
+		prometheus.CounterOpts{Name: "gateway_experiment_requests_total", Help: "Total A/B experiment requests"},
+		[]string{"experiment", "variant", "status"},
+	)
+	c.experimentLatency = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "gateway_experiment_latency_seconds",
+			Help:    "A/B experiment request latencies",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"experiment", "variant"},
+	)
 	reg.MustRegister(c.requestsTotal, c.requestDuration, c.tokensTotal,
-		c.activeRequests, c.upstreamHealth, c.rateLimitExceeded)
+		c.activeRequests, c.upstreamHealth, c.rateLimitExceeded,
+		c.experimentRequests, c.experimentLatency)
 	return c
 }
 
@@ -76,6 +91,14 @@ func (c *Collector) SetUpstreamHealth(upstream, provider string, healthy bool) {
 
 func (c *Collector) IncRateLimitExceeded(limitType string) {
 	c.rateLimitExceeded.WithLabelValues(limitType).Inc()
+}
+
+func (c *Collector) RecordExperimentRequest(experimentID, variant, status string) {
+	c.experimentRequests.WithLabelValues(experimentID, variant, status).Inc()
+}
+
+func (c *Collector) RecordExperimentLatency(experimentID, variant string, duration time.Duration) {
+	c.experimentLatency.WithLabelValues(experimentID, variant).Observe(duration.Seconds())
 }
 
 func (c *Collector) Handler() http.Handler {

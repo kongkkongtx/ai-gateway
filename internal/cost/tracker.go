@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yushi/ai-gateway/internal/cache"
+	"github.com/kongkkongtx/ai-gateway/internal/cache"
 )
 
 // Config defines cost control and quota management settings.

@@ -1,7 +1,8 @@
-﻿import { useState } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { ToastProvider } from './components/Toast'
-import ErrorBoundary from './components/ErrorBoundary'
+import ErrorBoundary, { setErrorLabels } from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import LoginPage from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -16,7 +17,16 @@ import Playground from './pages/Playground'
 import SecurityPoliciesPage from './pages/SecurityPolicies'
 
 export default function App() {
+  const { t } = useTranslation()
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('ai-gateway-token'))
+
+  useEffect(() => {
+    setErrorLabels({
+      title: t('components.error_title'),
+      defaultMsg: t('components.error_default_msg'),
+      retry: t('components.try_again'),
+    })
+  }, [t])
 
   const handleLogin = (t: string, _username: string, _role: string) => {
     setToken(t)

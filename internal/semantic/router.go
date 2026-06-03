@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/yushi/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
 )
 
 // Router performs semantic routing based on embedding similarity.

@@ -1,8 +1,10 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { UserPlus, Trash2, Users as UsersIcon } from 'lucide-react'
 import { getUsers, createUser, deleteUser, updateUserRole, type UserInfo } from '../api/gateway'
 
 export default function UsersPage() {
+  const { t } = useTranslation()
   const [users, setUsers] = useState<UserInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,11 +68,11 @@ export default function UsersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Users</h1>
-          <p className="text-sm text-surface-400 mt-1">Manage user accounts and roles</p>
+          <h1 className="text-2xl font-bold text-white">{t('users.title')}</h1>
+          <p className="text-sm text-surface-400 mt-1">{t('users.subtitle')}</p>
         </div>
         <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
-          <UserPlus size={16} /> Add User
+          <UserPlus size={16} /> {t('users.add')}
         </button>
       </div>
 

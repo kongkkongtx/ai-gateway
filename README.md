@@ -74,6 +74,29 @@ print(response.choices[0].message.content)
 - **Provider Fallback** — Automatic switch to backup providers on upstream timeout
 - **Plugin System** — Custom Provider / Security / Router plugins via HTTP interfaces
 
+### A/B Testing & Evaluation
+- **A/B Testing Engine** — Split traffic across multiple model providers with weighted variants, compare latency, error rate, and token cost
+- **Model Evaluation** — Define test prompt suites, run against multiple models, score results via exact match / semantic similarity / LLM-as-judge
+- **Significance Detection** — Automatic alerts when variant metrics diverge significantly
+
+### RAG & Knowledge Base
+- **Knowledge Base Management** — Create, ingest, and manage document collections via Admin API
+- **Recursive Chunking** — Automatically split documents into optimized chunks with configurable size and overlap
+- **Vector Search** — In-memory cosine similarity search with pluggable vector store interface
+- **Context Injection** — Retrieved chunks automatically injected into chat prompts as XML-wrapped context
+
+### MCP Server Integration
+- **MCP Hub** — Aggregates multiple backend MCP servers into a single `/mcp` endpoint
+- **Tool Namespacing** — Automatic `{serverName}__{toolName}` prefix to avoid conflicts
+- **JSON-RPC 2.0** — Full protocol support: initialize, tools/list, tools/call, ping, resources, prompts
+- **Tool Filtering** — Allow/deny lists per server, wildcard support
+
+### Multimodal Support
+- **Image Content** — OpenAI `image_url` content parts proxy through the gateway
+- **Audio Content** — OpenAI `input_audio` content parts support
+- **Content Part API** — Unified `ContentPart` type with ExtractText helper for all providers
+- **Backend Compatible** — Works with OpenAI, Anthropic, Google Gemini, and Azure adapters
+
 ### Security
 - **API Key Management** — Multi-key authentication with role-based permissions
 - **Prompt Injection Detection** — Built-in rule engine (80+ rules: role hijacking, jailbreaking, data exfiltration)
@@ -85,13 +108,14 @@ print(response.choices[0].message.content)
 - **Budget Alerts** — Automatic notifications when usage hits thresholds
 - **Auto Degradation** — Switch to cheaper models when limits are exceeded
 - **Semantic Cache** — Cache similar queries to reduce duplicate API calls
+- **Cache Prewarming** — Pre-load seed queries on startup, auto-refresh hot queries by hit count, TTL-based expiry
 
 ### Observability
-- **Prometheus Metrics** — Request volume, latency, token usage, upstream health
+- **Prometheus Metrics** — Request volume, latency, token usage, upstream health, experiment results
 - **OpenTelemetry Tracing** — End-to-end request tracing
 - **Structured Audit Logs** — Complete records for every request
 - **Webhook Notifications** — Real-time push for cost alerts, security events, upstream failures
-- **Admin Dashboard** — Dashboard / Upstreams / Routes / Keys / Settings / Prompts / Audit Logs
+- **Admin Dashboard** — Dashboard / Upstreams / Routes / Keys / Users / Security / Settings / Prompts / Audit Logs
 
 ### Deployment
 - **Kubernetes Native** — ConfigMap-based configuration, one-click K8s deployment
@@ -111,14 +135,20 @@ print(response.choices[0].message.content)
 | Prompt Injection Detection | ✅ | ✅ | Needs verification |
 | PII Sanitization | ✅ | ✅ | Needs verification |
 | Semantic Router | ✅ | ✅ | Needs verification |
-| Semantic Cache | ✅ | ✅ | Needs verification |
+| Semantic Cache + Prewarming | ✅ | ✅ | Needs verification |
 | Cost Control | ✅ | ✅ | Needs verification |
 | Audit Logs | ✅ | ✅ | Needs persistence |
 | Prompt Templates | ✅ | ✅ | Needs verification |
 | Webhook Notifications | ✅ | ✅ | Needs verification |
 | Plugin System | ✅ | ✅ | Needs verification |
-| Admin UI | ✅ | ✅ | Needs refinement |
+| Admin UI (i18n) | ✅ | ✅ | Needs refinement |
 | Python / Node SDK | ✅ | ✅ | Needs refinement |
+| A/B Testing Engine | ✅ | ✅ | Needs verification |
+| Model Evaluation Framework | ✅ | ✅ | Needs verification |
+| MCP Server Hub | ✅ | ✅ | Needs verification |
+| RAG Knowledge Base | ✅ | ✅ | Needs verification |
+| Multimodal Support | ✅ | ✅ | Needs verification |
+| Cache Prewarming | ✅ | ✅ | Needs verification |
 
 ---
 
@@ -191,6 +221,21 @@ See [configs/gateway.yaml](configs/gateway.yaml) for a complete example. Support
 | PUT | /admin/webhook | Update webhook config |
 | GET | /admin/plugins | List plugins |
 | POST | /admin/plugins | Reload plugin config |
+| GET | /admin/experiments | List A/B experiments |
+| POST | /admin/experiments | Create A/B experiment |
+| POST | /admin/experiments/{id}/start\|stop | Start/stop experiment |
+| GET | /admin/experiments/{id}/results | Experiment results + significance alert |
+| GET | /admin/evaluations | List evaluation suites |
+| POST | /admin/evaluations | Create evaluation suite |
+| POST | /admin/evaluations/{id}/run | Trigger evaluation run |
+| GET | /admin/evaluations/{id}/runs | List evaluation runs |
+| POST | /admin/rag/knowledge-bases | Create knowledge base |
+| POST | /admin/rag/knowledge-bases/{id}/ingest | Ingest documents |
+| GET | /admin/rag/knowledge-bases/{id}/stats | Knowledge base statistics |
+| GET | /admin/mcp/servers | List MCP servers |
+| POST | /admin/mcp | MCP JSON-RPC endpoint |
+| GET | /admin/cache/stats | Semantic cache statistics |
+| POST | /admin/cache/prewarm | Trigger cache prewarming |
 | GET | /metrics | Prometheus metrics |
 | GET | /openapi.yaml | OpenAPI specification |
 
@@ -203,9 +248,9 @@ See [configs/gateway.yaml](configs/gateway.yaml) for a complete example. Support
 | v1.0 | Phase 1 — MVP Skeleton | ✅ Complete | OpenAI proxy, routing, load balancing, auth/rate limiting |
 | v1.5 | Phase 2 — Multi-Provider | ✅ Complete | Anthropic/Google/Azure, Fallback, Redis, K8s |
 | v2.0 | Phase 3 — Differentiation | ✅ Complete | Semantic routing, security, PII, semantic cache, cost control, Web UI, prompts, webhooks, plugins, SDK |
-| v2.1 | Production Hardening | 🎯 In Development | Pipeline integration, streaming compat, cost completion, audit persistence, config rollback, Docker Compose, tests |
-| v2.2 | Enterprise Governance | 📋 Planned | Multi-user/RBAC, team cost, API key lifecycle, security hub, audit export, SSO |
-| v3.0 | AI Optimization | 📋 Future | A/B testing, model evaluation, multimodal, RAG, MCP |
+| v2.1 | Production Hardening | ✅ Complete | Pipeline integration, streaming compat, cost completion, audit persistence, config rollback, Docker Compose, tests |
+| v2.2 | Enterprise Governance | ✅ Complete | Multi-user/RBAC, team cost, API key lifecycle, security hub, audit export, SSO |
+| v3.0 | AI Optimization | ✅ In Progress | **P0**: A/B Testing, Model Evaluation ✅ — **P1**: MCP, RAG, Multimodal, Cache Prewarming ✅ — **P2**: Smart Routing, Team Collaboration, Terraform |
 
 Full roadmap: [ROADMAP.md](ROADMAP.md) | Midterm review: [MIDTERM_REVIEW_RECOMMENDATIONS.md](docs/MIDTERM_REVIEW_RECOMMENDATIONS.md)
 

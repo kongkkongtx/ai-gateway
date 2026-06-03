@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-	"github.com/yushi/ai-gateway/internal/prompt"
-	"github.com/yushi/ai-gateway/internal/webhook"
-	"github.com/yushi/ai-gateway/internal/plugin"
+	"github.com/kongkkongtx/ai-gateway/internal/prompt"
+	"github.com/kongkkongtx/ai-gateway/internal/webhook"
+	"github.com/kongkkongtx/ai-gateway/internal/plugin"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/yushi/ai-gateway/internal/server/middleware"
-	"github.com/yushi/ai-gateway/internal/security"
-	"github.com/yushi/ai-gateway/internal/config"
-	"github.com/yushi/ai-gateway/internal/user"
-	"github.com/yushi/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/server/middleware"
+	"github.com/kongkkongtx/ai-gateway/internal/security"
+	"github.com/kongkkongtx/ai-gateway/internal/config"
+	"github.com/kongkkongtx/ai-gateway/internal/user"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
 )
 
 // JSON-friendly upstream request with string durations

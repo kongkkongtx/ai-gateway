@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useTranslation } from "react-i18next"
 import { Plus, FileText, Trash2, History, RefreshCw, Code } from "lucide-react"
 import { getPrompts, savePrompt, deletePrompt, addPromptVersion } from "../api/gateway"
 import Modal from "../components/Modal"
@@ -26,6 +27,7 @@ interface PromptTemplate {
 }
 
 export default function PromptsPage() {
+  const { t } = useTranslation()
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -149,7 +151,7 @@ export default function PromptsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Prompt Templates</h1>
+          <h1 className="text-2xl font-bold text-white">{t('prompts.title')}</h1>
           <p className="text-sm text-surface-400 mt-1">Manage system prompt templates with versioning and variable injection</p>
         </div>
         <div className="flex items-center gap-3">

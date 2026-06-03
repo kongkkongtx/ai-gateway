@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/yushi/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
 )
 
 // Adapter proxies requests to Google's Gemini API, converting between
@@ -263,9 +263,9 @@ func (a *Adapter) toGeminiRequest(req *openai.ChatCompletionRequest) *geminiRequ
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
 			if systemContent != "" {
-				systemContent += "\n" + msg.Content
+				systemContent += "\n" + openai.ExtractText(msg.Content)
 			} else {
-				systemContent = msg.Content
+				systemContent = openai.ExtractText(msg.Content)
 			}
 			continue
 		}
@@ -280,7 +280,7 @@ func (a *Adapter) toGeminiRequest(req *openai.ChatCompletionRequest) *geminiRequ
 
 		geminiReq.Contents = append(geminiReq.Contents, geminiContent{
 			Role:  role,
-			Parts: []geminiPart{{Text: msg.Content}},
+			Parts: []geminiPart{{Text: openai.ExtractText(msg.Content)}},
 		})
 	}
 

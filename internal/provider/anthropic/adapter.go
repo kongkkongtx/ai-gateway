@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yushi/ai-gateway/internal/provider/openai"
+	"github.com/kongkkongtx/ai-gateway/internal/provider/openai"
 )
 
 // Adapter proxies requests to Anthropic's Claude API, converting between
@@ -191,9 +191,9 @@ func (a *Adapter) toAnthropicRequest(req *openai.ChatCompletionRequest) (*anthro
 	for _, msg := range req.Messages {
 		if msg.Role == "system" {
 			if systemPrompt != "" {
-				systemPrompt += "\n" + msg.Content
+				systemPrompt += "\n" + openai.ExtractText(msg.Content)
 			} else {
-				systemPrompt = msg.Content
+				systemPrompt = openai.ExtractText(msg.Content)
 			}
 			continue
 		}

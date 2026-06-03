@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yushi/ai-gateway/internal/cache"
+	"github.com/kongkkongtx/ai-gateway/internal/cache"
 )
 
 // Cache provides semantic caching of AI responses.
@@ -32,6 +32,7 @@ type CacheEntry struct {
 	Timestamp  time.Time
 	Model      string
 	HitCount   int
+	ExpiresAt  time.Time // zero = never expires
 }
 
 // NewCache creates a semantic cache.
@@ -63,26 +64,88 @@ func (sc *Cache) Get(query string, threshold float64) ([]byte, float64, error) {
 	}
 	queryEmbed := resp.Data[0].Embedding
 
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
+	// Expire stale entries
+	sc.mu.Lock()
+	sc.expireStale()
+	sc.mu.Unlock()
 
-	var best []byte
+	sc.mu.RLock()
+	var bestIdx int = -1
 	var bestScore float64
 
-	for _, entry := range sc.entries {
+	for i, entry := range sc.entries {
 		score := CosineSimilarity(queryEmbed, entry.Embedding)
 		if score > threshold && score > bestScore {
 			bestScore = score
-			best = entry.Response
+			bestIdx = i
 		}
 	}
 
-	if best != nil {
+	if bestIdx >= 0 {
+		sc.entries[bestIdx].HitCount++
+		resp := sc.entries[bestIdx].Response
+		sc.mu.RUnlock()
 		sc.logger.Debug("semantic cache hit",
 			"score", math.Round(bestScore*1000)/1000)
+		return resp, bestScore, nil
 	}
 
-	return best, bestScore, nil
+	sc.mu.RUnlock()
+	return nil, 0, nil
+}
+
+// CacheStats holds cache performance statistics.
+type CacheStats struct {
+	TotalEntries int     `json:"total_entries"`
+	MaxEntries   int     `json:"max_entries"`
+	HitCount     int64   `json:"hit_count"`
+	TotalLookups int64   `json:"total_lookups"`
+	HitRate      float64 `json:"hit_rate"`
+	StoreType    string  `json:"store_type"`
+}
+
+// Stats returns current cache statistics.
+func (sc *Cache) Stats() CacheStats {
+	sc.mu.RLock()
+	defer sc.mu.RUnlock()
+
+	var totalHits int64
+	for _, e := range sc.entries {
+		totalHits += int64(e.HitCount)
+	}
+	storeType := "memory"
+	if sc.redis != nil {
+		storeType = "redis"
+	}
+
+	return CacheStats{
+		TotalEntries: len(sc.entries),
+		MaxEntries:   sc.cfg.MaxEntries,
+		HitCount:     totalHits,
+		StoreType:    storeType,
+	}
+}
+
+// expireStale removes expired cache entries.
+// Must be called with at least a read lock held.
+func (sc *Cache) expireStale() {
+	ttlStr := sc.cfg.TTL
+	if ttlStr == "" {
+		return // no TTL configured
+	}
+	ttl, err := time.ParseDuration(ttlStr)
+	if err != nil || ttl <= 0 {
+		return
+	}
+	now := time.Now()
+	var kept []CacheEntry
+	for _, e := range sc.entries {
+		if !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt) {
+			continue // skip expired
+		}
+		kept = append(kept, e)
+	}
+	sc.entries = kept
 }
 
 // Set caches a response for the given query.
@@ -106,6 +169,7 @@ func (sc *Cache) Set(query string, response []byte, model string) {
 		Embedding: resp.Data[0].Embedding,
 		Timestamp: time.Now(),
 		Model:     model,
+		ExpiresAt: sc.computeExpiry(),
 	}
 
 	sc.mu.Lock()
@@ -124,6 +188,23 @@ func (sc *Cache) Set(query string, response []byte, model string) {
 
 	sc.entries = append(sc.entries, entry)
 	sc.logger.Debug("semantic cache set", "model", model, "entries", len(sc.entries))
+}
+
+// computeExpiry returns the expiration time based on TTL config.
+func (sc *Cache) computeExpiry() time.Time {
+	if sc.cfg.TTL == "" {
+		return time.Time{} // zero = never expires
+	}
+	ttl, err := time.ParseDuration(sc.cfg.TTL)
+	if err != nil || ttl <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(ttl)
+}
+
+// Embedder returns the cache's embedder, or nil if none was set.
+func (sc *Cache) Embedder() Embedder {
+	return sc.embedder
 }
 
 // ToRedis serializes and stores cache entries in Redis.

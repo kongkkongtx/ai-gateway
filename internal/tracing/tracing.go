@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const tracerName = "github.com/yushi/ai-gateway"
+const tracerName = "github.com/kongkkongtx/ai-gateway"
 
 // Init creates and configures a TracerProvider with a stdout span exporter.
 // The exporter writes JSON traces to stdout for development visibility.

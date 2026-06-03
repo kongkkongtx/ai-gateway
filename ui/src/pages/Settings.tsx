@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import { RefreshCw, Shield, FileText, Gauge, Database } from 'lucide-react'
 import { getGatewayConfig, updateGatewayConfig, updateWebhookConfig, getWebhookConfig } from '../api/gateway'
 import { useToast } from '../components/Toast'
@@ -9,6 +10,7 @@ const LOG_LEVELS = ['debug', 'info', 'warn', 'error']
 const LOG_FORMATS = ['text', 'json']
 
 export default function SettingsPage() {
+  const { t } = useTranslation()
   const { toast } = useToast()
   const [config, setConfig] = useState<GatewayConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -65,7 +67,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white">Settings</h1>
+        <h1 className="text-2xl font-bold text-white">{t('settings.title')}</h1>
         <div className="space-y-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="card"><div className="h-24 bg-surface-800 rounded animate-pulse" /></div>

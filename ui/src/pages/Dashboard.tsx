@@ -89,7 +89,7 @@ export default function Dashboard() {
           <p className="text-sm text-surface-400 mt-1">{t('dashboard.subtitle', 'Real-time AI Gateway monitoring')}</p>
         </div>
         <div className="flex items-center gap-3">
-          {loading && <div className="text-xs text-surface-500 animate-pulse">Refreshing...</div>}
+          {loading && <div className="text-xs text-surface-500 animate-pulse">{t('dashboard.refreshing')}</div>}
           <button onClick={() => { setRefreshing(true); fetchData(true) }} disabled={refreshing} className="btn-ghost flex items-center gap-2">
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             {t('common.refresh')}
@@ -102,7 +102,7 @@ export default function Dashboard() {
         <div className="bg-red-900/20 border border-red-800/40 rounded-xl p-4 flex items-center gap-3">
           <AlertTriangle size={18} className="text-red-400 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-red-300">Connection Error</p>
+            <p className="text-sm font-medium text-red-300">{t('dashboard.connection_error')}</p>
             <p className="text-xs text-red-400/80 mt-0.5">{error}</p>
           </div>
         </div>
@@ -114,7 +114,7 @@ export default function Dashboard() {
           {isHealthy ? <CheckCircle2 size={20} className="text-accent-400 shrink-0" /> : <AlertTriangle size={20} className="text-yellow-400 shrink-0" />}
           <div>
             <p className="text-sm font-medium text-white">{isHealthy ? t('dashboard.all_ok', 'All systems operational') : t('dashboard.degraded', 'Service degraded')}</p>
-            <p className="text-xs text-surface-400 mt-0.5">{healthyCount}/{totalUpstreams} upstreams healthy</p>
+            <p className="text-xs text-surface-400 mt-0.5">{t('dashboard.healthy_upstreams', { healthy: healthyCount, total: totalUpstreams })}</p>
           </div>
         </div>
       )}
@@ -133,12 +133,12 @@ export default function Dashboard() {
         <div className="card">
           <h2 className="card-header flex items-center gap-2">
             <Activity size={16} className="text-brand-400" />
-            Request Activity
+            {t("dashboard.request_activity")}
           </h2>
           <div className="h-64">
             {chartData.length < 2 ? (
               <div className="h-full flex items-center justify-center text-sm text-surface-500">
-                <Clock size={16} className="mr-2" /> Collecting data...
+                <Clock size={16} className="mr-2" /> {t("dashboard.collecting_data")}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -164,12 +164,12 @@ export default function Dashboard() {
         <div className="card">
           <h2 className="card-header flex items-center gap-2">
             <TrendingUp size={16} className="text-accent-400" />
-            Token Usage (24h)
+            {t("dashboard.token_usage_24h")}
           </h2>
           <div className="h-64">
             {costChartData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-sm text-surface-500">
-                <TrendingUp size={16} className="mr-2" /> No usage data yet
+                <TrendingUp size={16} className="mr-2" /> {t("dashboard.no_usage_data")}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
@@ -193,8 +193,8 @@ export default function Dashboard() {
         {/* Upstreams */}
         <div className="card">
           <h2 className="card-header flex items-center justify-between">
-            <span className="flex items-center gap-2"><Server size={16} /> Upstreams</span>
-            <span className="text-surface-500 font-normal text-xs">{healthyCount}/{totalUpstreams} healthy</span>
+            <span className="flex items-center gap-2"><Server size={16} /> {t("dashboard.upstreams_title")}</span>
+            <span className="text-surface-500 font-normal text-xs">{t("dashboard.healthy_upstreams", { healthy: healthyCount, total: totalUpstreams })}</span>
           </h2>
           <div className="space-y-2">
             {loading ? Array.from({ length: 3 }).map((_, i) => (<div key={i} className="h-10 bg-surface-800 rounded-lg animate-pulse" />))
@@ -222,7 +222,7 @@ export default function Dashboard() {
         <div className="card">
           <h2 className="card-header flex items-center justify-between">
             <span>{t('routes.title')}</span>
-            <span className="text-surface-500 font-normal text-xs">{totalRoutes} rules</span>
+            <span className="text-surface-500 font-normal text-xs">{t("dashboard.routes_count", { count: totalRoutes })}</span>
           </h2>
           <div className="space-y-2">
             {loading ? Array.from({ length: 3 }).map((_, i) => (<div key={i} className="h-10 bg-surface-800 rounded-lg animate-pulse" />))
@@ -254,8 +254,8 @@ export default function Dashboard() {
       {teamStats.length > 0 && (
         <div className="card">
           <h2 className="card-header flex items-center justify-between">
-            <span className="flex items-center gap-2"><TrendingUp size={16} /> Team Cost Ranking</span>
-            <span className="text-surface-500 font-normal text-xs">{teamStats.length} teams</span>
+            <span className="flex items-center gap-2"><TrendingUp size={16} /> {t("dashboard.team_cost_ranking")}</span>
+            <span className="text-surface-500 font-normal text-xs">{t("dashboard.teams_count", { count: teamStats.length })}</span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="h-[200px]">
@@ -274,7 +274,7 @@ export default function Dashboard() {
                 <div key={i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-surface-950/50 border border-surface-800/50">
                   <div>
                     <span className="text-sm text-white font-medium">{ts.team}</span>
-                    <span className="text-xs text-surface-500 ml-2">{ts.key_count} key(s)</span>
+                    <span className="text-xs text-surface-500 ml-2">{t("dashboard.keys_count", { count: ts.key_count })}</span>
                   </div>
                   <div className="text-right">
                     <span className="text-sm font-mono text-brand-400">{ts.total_tokens.toLocaleString()}</span>
@@ -290,8 +290,8 @@ export default function Dashboard() {
       {costStats.length > 0 && (
         <div className="card">
           <h2 className="card-header flex items-center justify-between">
-            <span className="flex items-center gap-2"><TrendingUp size={16} /> Token Usage Details</span>
-            <span className="text-surface-500 font-normal text-xs">{costStats.length} keys</span>
+            <span className="flex items-center gap-2"><TrendingUp size={16} /> {t("dashboard.token_details")}</span>
+            <span className="text-surface-500 font-normal text-xs">{t("dashboard.keys_detail", { count: costStats.length })}</span>
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
